@@ -1,10 +1,10 @@
 import type { PlaybackSnapshot } from '../adapters/types'
 import type { Result } from '../lib/result'
 import type { ContinueWatchingItem, MatchResult, Profile, ShowDetail, Streak } from '../lib/types'
-import type { ControlAction } from '../party/protocol'
-import type { PartyTabMessage, PartyTabView } from '../party/rooms'
+import type { ControlAction, MemberStatus, ReactionKind } from '../party/protocol'
+import type { PartyLiveMessage, PartyTabMessage, PartyTabView } from '../party/rooms'
 
-export type { PartyTabMessage, PartyTabView }
+export type { PartyLiveMessage, PartyTabMessage, PartyTabView }
 
 /**
  * Every message between contexts is one of these. The service worker answers; popup,
@@ -27,8 +27,16 @@ export type Message =
    * viewer); `confirm: true` is the viewer's click on Join.
    */
   | { type: 'party:join-request'; adapter: string; code: string; confirm: boolean }
+  /** What the viewer is doing (watching, buffering, ad, away), for the member list. */
+  | { type: 'party:status'; adapter: string; status: MemberStatus }
+  /**
+   * The pill's chat button: open the side panel for this tab. Handled synchronously by
+   * the service worker so the click's user gesture still counts.
+   */
+  | { type: 'party:open-panel' }
   // From the content script (its own tab) or an extension page (any tab, by id).
   | { type: 'party:get-for-tab'; tabId?: number }
+  | { type: 'party:react'; kind: ReactionKind; tabId?: number }
   // From extension pages (popup, options, side panel).
   | { type: 'session:get' }
   | { type: 'session:sign-in' }
@@ -43,6 +51,9 @@ export type Message =
   | { type: 'settings:set'; settings: Partial<Settings> }
   | { type: 'party:start'; tabId: number }
   | { type: 'party:leave'; tabId: number }
+  | { type: 'party:send-chat'; tabId: number; text: string }
+  /** The Party tab is on screen for this tab. */
+  | { type: 'party:mark-read'; tabId: number }
 
 export type MessageType = Message['type']
 
@@ -84,6 +95,11 @@ interface ReplyMap {
   'party:get-for-tab': PartyTabView | null
   'party:start': Result<PartyTabView>
   'party:leave': Ack
+  'party:status': Ack
+  'party:open-panel': Ack
+  'party:react': Ack
+  'party:send-chat': Ack
+  'party:mark-read': Ack
 }
 
 export type ReplyOf<T extends MessageType> = ReplyMap[T]
@@ -99,8 +115,23 @@ export type Broadcast =
   | { type: 'episode:changed'; tabId: number }
   | { type: 'session:changed' }
   | { type: 'party:changed'; tabId: number }
+  /** A live room event for a tab (chat, presence, reactions, server errors, unread). */
+  | (PartyLiveMessage & { tabId: number })
 
-const BROADCAST_TYPES = new Set<string>(['episode:changed', 'session:changed', 'party:changed'])
+const PARTY_LIVE_TYPES = [
+  'party:presence',
+  'party:chat',
+  'party:reaction',
+  'party:error',
+  'party:unread',
+] as const satisfies readonly PartyLiveMessage['type'][]
+
+const BROADCAST_TYPES = new Set<string>([
+  'episode:changed',
+  'session:changed',
+  'party:changed',
+  ...PARTY_LIVE_TYPES,
+])
 
 export function isBroadcast(value: unknown): value is Broadcast {
   return (
@@ -124,7 +155,12 @@ export function onBroadcast(listener: (message: Broadcast) => void): () => void 
   return () => chrome.runtime.onMessage.removeListener(handler)
 }
 
-const PARTY_TAB_TYPES = new Set<string>(['party:state', 'party:members', 'party:ended'])
+const PARTY_TAB_TYPES = new Set<string>([
+  'party:state',
+  'party:members',
+  'party:ended',
+  ...PARTY_LIVE_TYPES,
+])
 
 export function isPartyTabMessage(value: unknown): value is PartyTabMessage {
   return (

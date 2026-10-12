@@ -125,3 +125,154 @@
     opacity: 0;
   }
 }
+
+/* The pill's chat button and reactions: the only parts of the pill that take clicks. */
+.nr-party-pill__chat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nr-space-1);
+  min-height: 24px;
+  padding: 0 var(--nr-space-1);
+  border: 0;
+  border-radius: var(--nr-radius-pill);
+  background: none;
+  color: var(--nr-color-ink);
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.nr-party-pill__chat:hover,
+.nr-party-pill__icon:hover {
+  background: var(--nr-color-surface-overlay);
+}
+
+.nr-party-pill__chat:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-party-pill__unread {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nr-space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quiet: a small amber dot next to the count, not a red alert badge. */
+.nr-party-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nr-color-accent);
+}
+
+.nr-party-pill__icon {
+  pointer-events: auto;
+}
+
+.nr-party-pill__tray {
+  display: inline-flex;
+  gap: 2px;
+  padding-left: var(--nr-space-1);
+  border-left: 1px solid var(--nr-color-border);
+}
+
+/* "Sam: that ending" under the pill, far from the control bar along the bottom. */
+.nr-party-bubble {
+  position: fixed;
+  top: calc(var(--nr-space-16) + 40px);
+  right: var(--nr-space-6);
+  z-index: 2147483646;
+  max-width: min(320px, calc(100vw - 2 * var(--nr-space-6)));
+  margin: 0;
+  padding: var(--nr-space-2) var(--nr-space-3);
+  background: var(--nr-color-scrim);
+  border-radius: var(--nr-radius-md);
+  color: var(--nr-color-ink);
+  font: var(--nr-type-body-sm);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nr-party-bubble {
+    animation: nr-party-pill-in var(--nr-duration-base) var(--nr-ease-out);
+  }
+}
+
+/* Floating reactions: they rise from the video's bottom-right, above its controls. */
+.nr-reactions {
+  position: fixed;
+  z-index: 2147483645;
+  width: 120px;
+  height: 0;
+  pointer-events: none;
+}
+
+.nr-reaction {
+  position: absolute;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  animation: nr-reaction-float 1200ms var(--nr-ease-out) forwards;
+}
+
+.nr-reaction__icon {
+  color: var(--nr-color-accent);
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6));
+}
+
+.nr-reaction__name {
+  max-width: 96px;
+  overflow: hidden;
+  color: var(--nr-color-ink);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+  white-space: nowrap;
+}
+
+/* Viewers who asked for less motion: the reaction fades in place, no travel. */
+.nr-reaction--fade {
+  animation-name: nr-reaction-fade;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nr-reaction {
+    animation-name: nr-reaction-fade;
+  }
+}
+
+@keyframes nr-reaction-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.8);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-24px) scale(1);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-160px);
+  }
+}
+
+@keyframes nr-reaction-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  20%,
+  75% {
+    opacity: 1;
+  }
+}

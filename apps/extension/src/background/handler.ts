@@ -2,8 +2,15 @@ import type { PlaybackSnapshot } from '../adapters/types'
 import { adapterFor } from '../adapters/registry'
 import { fail } from '../lib/result'
 import type { AnyReply, Message, ReplyOf, Settings } from '../messaging/protocol'
+import { cleanChatText } from '../party/chat'
 import type { LocalAction } from '../party/engine'
-import { isControlAction } from '../party/protocol'
+import {
+  isControlAction,
+  isMemberStatus,
+  isReactionKind,
+  type MemberStatus,
+  type ReactionKind,
+} from '../party/protocol'
 
 /** Everything the service worker can do, one method per message. */
 export interface Services {
@@ -34,6 +41,15 @@ export interface Services {
     confirm: boolean,
   ): Promise<ReplyOf<'party:join-request'>>
   reportPartyAction(tabId: number, action: LocalAction): Promise<boolean>
+  setPartyStatus(tabId: number, status: MemberStatus): Promise<boolean>
+  reactInParty(tabId: number, kind: ReactionKind): Promise<boolean>
+  sendPartyChat(tabId: number, text: string): Promise<boolean>
+  markPartyRead(tabId: number): Promise<void>
+  /**
+   * Opens the side panel on the tab. Must call chrome.sidePanel.open before its first
+   * await: Chrome only allows it while the click's user gesture is still current.
+   */
+  openPanel(tabId: number): Promise<boolean>
 }
 
 export type Sender = Pick<chrome.runtime.MessageSender, 'tab' | 'url'>
@@ -46,6 +62,9 @@ const FROM_CONTENT = new Set<Message['type']>([
   'party:report',
   'party:join-request',
   'party:get-for-tab',
+  'party:status',
+  'party:react',
+  'party:open-panel',
 ])
 
 const PARTY_CODE = /^[A-Za-z0-9_-]{4,64}$/
@@ -177,6 +196,34 @@ export function createHandler(services: Services, extensionOrigin: string) {
         const tabId = partyTab(sender, message.tabId)
         return tabId === null ? null : services.partyForTab(tabId)
       }
+      case 'party:status': {
+        const tabId = playerTab(sender, message.adapter)
+        if (tabId === null || !isMemberStatus(message.status)) return { ok: false }
+        return { ok: await services.setPartyStatus(tabId, message.status) }
+      }
+      case 'party:react': {
+        const tabId = partyTab(sender, message.tabId)
+        if (tabId === null || !isReactionKind(message.kind)) return { ok: false }
+        return { ok: await services.reactInParty(tabId, message.kind) }
+      }
+      case 'party:open-panel': {
+        // Only the pill on a player page asks for this, for its own tab.
+        const url = sender.tab?.url
+        const tabId = sender.tab?.id
+        if (fromExtensionPage(sender) || !url || tabId === undefined || !adapterFor(url)) {
+          return { ok: false }
+        }
+        return { ok: await services.openPanel(tabId) }
+      }
+      case 'party:send-chat': {
+        const text = cleanChatText(message.text)
+        if (typeof message.tabId !== 'number' || text === null) return { ok: false }
+        return { ok: await services.sendPartyChat(message.tabId, text) }
+      }
+      case 'party:mark-read':
+        if (typeof message.tabId !== 'number') return { ok: false }
+        await services.markPartyRead(message.tabId)
+        return { ok: true }
       case 'party:start':
         if (typeof message.tabId !== 'number') return fail('rejected')
         return services.startParty(message.tabId)

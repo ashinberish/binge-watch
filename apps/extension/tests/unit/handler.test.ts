@@ -30,6 +30,11 @@ const partyView: PartyTabView = {
   status: 'live',
   state: null,
   clockOffsetMs: 0,
+  members: [],
+  youId: null,
+  chat: [],
+  unread: 0,
+  panelOpen: false,
 }
 
 function fakeServices(): Services {
@@ -54,6 +59,11 @@ function fakeServices(): Services {
     partyForTab: vi.fn(async () => partyView),
     partyJoinRequest: vi.fn(async () => ok({ ...partyView, status: 'invited' as const })),
     reportPartyAction: vi.fn(async () => true),
+    setPartyStatus: vi.fn(async () => true),
+    reactInParty: vi.fn(async () => true),
+    sendPartyChat: vi.fn(async () => true),
+    markPartyRead: vi.fn(async () => undefined),
+    openPanel: vi.fn(async () => true),
   }
 }
 
@@ -236,6 +246,92 @@ describe('message handler', () => {
       expect(await handle(ask, otherSite)).toEqual(rejected)
       expect(await handle(ask, popup)).toEqual(rejected)
       expect(services.partyJoinRequest).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('watch party chat, reactions and presence', () => {
+    it('takes a status from the player tab, checked', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      const status = { type: 'party:status', adapter: 'youtube', status: 'buffering' }
+      expect(await handle(status, player)).toEqual({ ok: true })
+      expect(services.setPartyStatus).toHaveBeenCalledWith(7, 'buffering')
+      for (const [bad, sender] of [
+        [{ ...status, status: 'sleeping' }, player],
+        [{ ...status, adapter: 'netflix' }, player],
+        [status, ytHome],
+        [status, otherSite],
+        [status, popup],
+      ] as const) {
+        expect(await handle(bad, sender)).toEqual({ ok: false })
+      }
+      expect(services.setPartyStatus).toHaveBeenCalledOnce()
+    })
+
+    it('takes reactions from the player tab (its own tab) and from extension pages', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      expect(await handle({ type: 'party:react', kind: 'fire', tabId: 99 }, player)).toEqual({
+        ok: true,
+      })
+      expect(services.reactInParty).toHaveBeenLastCalledWith(7, 'fire')
+      expect(await handle({ type: 'party:react', kind: 'clap', tabId: 3 }, popup)).toEqual({
+        ok: true,
+      })
+      expect(services.reactInParty).toHaveBeenLastCalledWith(3, 'clap')
+      expect(await handle({ type: 'party:react', kind: 'poop', tabId: 3 }, popup)).toEqual({
+        ok: false,
+      })
+      expect(await handle({ type: 'party:react', kind: 'fire' }, popup)).toEqual({ ok: false })
+      expect(await handle({ type: 'party:react', kind: 'fire' }, otherSite)).toEqual({ ok: false })
+      expect(await handle({ type: 'party:react', kind: 'fire' }, ytHome)).toEqual({ ok: false })
+      expect(services.reactInParty).toHaveBeenCalledTimes(2)
+    })
+
+    it('sends chat from extension pages only, trimmed and within 500 characters', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      const chat = { type: 'party:send-chat', tabId: 7, text: '  that ending  ' }
+      expect(await handle(chat, popup)).toEqual({ ok: true })
+      expect(services.sendPartyChat).toHaveBeenCalledWith(7, 'that ending')
+      for (const bad of [
+        { ...chat, text: '   ' },
+        { ...chat, text: 'a'.repeat(501) },
+        { ...chat, text: 42 },
+        { ...chat, tabId: '7' },
+      ]) {
+        expect(await handle(bad, popup)).toEqual({ ok: false })
+      }
+      expect(await handle(chat, player)).toEqual({ ok: false })
+      expect(services.sendPartyChat).toHaveBeenCalledOnce()
+    })
+
+    it('marks a tab’s chat read for extension pages only', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      expect(await handle({ type: 'party:mark-read', tabId: 7 }, popup)).toEqual({ ok: true })
+      expect(services.markPartyRead).toHaveBeenCalledWith(7)
+      expect(await handle({ type: 'party:mark-read', tabId: 7 }, player)).toEqual({ ok: false })
+      expect(await handle({ type: 'party:mark-read' }, popup)).toEqual({ ok: false })
+      expect(services.markPartyRead).toHaveBeenCalledOnce()
+    })
+
+    it('opens the side panel for the player tab that asked, before any await', () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      void handle({ type: 'party:open-panel' }, player)
+      // Synchronously: the click's user gesture must still be current.
+      expect(services.openPanel).toHaveBeenCalledWith(7)
+    })
+
+    it('refuses to open the side panel for anything but a player tab', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      expect(await handle({ type: 'party:open-panel' }, popup)).toEqual({ ok: false })
+      expect(await handle({ type: 'party:open-panel' }, otherSite)).toEqual({ ok: false })
+      expect(services.openPanel).not.toHaveBeenCalled()
+      vi.mocked(services.openPanel).mockResolvedValueOnce(false)
+      expect(await handle({ type: 'party:open-panel' }, player)).toEqual({ ok: false })
     })
   })
 })

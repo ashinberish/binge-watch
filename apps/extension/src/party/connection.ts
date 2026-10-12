@@ -2,10 +2,15 @@ import { createClockEstimator, type ClockEstimator } from './clock'
 import {
   CloseCode,
   parseServerMessage,
+  type ChatMessage,
   type ClientMessage,
   type ControlAction,
+  type MemberStatus,
   type PartyMember,
   type PlaybackState,
+  type Reaction,
+  type ReactionKind,
+  type RoomMember,
   type ServerMessage,
 } from './protocol'
 
@@ -63,6 +68,14 @@ export type ConnectionStatus = 'connecting' | 'live' | 'reconnecting'
 /** Why the connection stopped for good. `closed` is our own close() and is not reported. */
 export type EndReason = 'ended' | 'unauthorized' | 'forbidden' | 'not-found'
 
+/** What the welcome carries besides the playback state. */
+export interface WelcomeExtras {
+  /** Everyone in the room. Empty when the server does not send the list. */
+  members: RoomMember[]
+  /** Recent chat, oldest first. */
+  chat: ChatMessage[]
+}
+
 export interface PartyConnectionDeps {
   url: string
   createSocket: (url: string) => SocketLike
@@ -71,9 +84,19 @@ export interface PartyConnectionDeps {
   /** Forces a refresh after the server rejected the token. True when a new token exists. */
   refreshToken: () => Promise<boolean>
   now?: () => number
-  onWelcome?: (state: PlaybackState, members: number, you: PartyMember) => void
+  onWelcome?: (
+    state: PlaybackState,
+    members: number,
+    you: PartyMember,
+    extras: WelcomeExtras,
+  ) => void
   onState?: (state: PlaybackState) => void
   onMembers?: (count: number) => void
+  onPresence?: (members: RoomMember[]) => void
+  onChat?: (message: ChatMessage) => void
+  onReaction?: (reaction: Reaction) => void
+  /** The server refused something we sent (e.g. chat too fast), as a sentence for people. */
+  onError?: (detail: string) => void
   onStatus?: (status: ConnectionStatus) => void
   onEnd?: (reason: EndReason) => void
 }
@@ -162,13 +185,25 @@ export function createPartyConnection(deps: PartyConnectionDeps) {
     switch (message.type) {
       case 'welcome':
         deps.onStatus?.('live')
-        deps.onWelcome?.(message.state, message.members, message.you)
+        deps.onWelcome?.(message.state, message.members, message.you, {
+          members: message.members_list,
+          chat: message.chat,
+        })
         break
       case 'state':
         deps.onState?.(message.state)
         break
       case 'members':
         deps.onMembers?.(message.count)
+        break
+      case 'presence':
+        deps.onPresence?.(message.members)
+        break
+      case 'chat':
+        deps.onChat?.(message.message)
+        break
+      case 'reaction':
+        deps.onReaction?.(message.reaction)
         break
       default:
         break
@@ -198,6 +233,7 @@ export function createPartyConnection(deps: PartyConnectionDeps) {
         end('ended')
         return
       case 'error':
+        if (message.detail) deps.onError?.(message.detail)
         return
       case 'welcome':
         welcomed = true
@@ -291,6 +327,24 @@ export function createPartyConnection(deps: PartyConnectionDeps) {
           ? { type: 'control', action, position }
           : { type: 'control', action, position, rate },
       )
+    },
+
+    /** Tells the room what this viewer is doing. False when not connected. */
+    status(status: MemberStatus): boolean {
+      if (!welcomed) return false
+      return write({ type: 'status', status })
+    },
+
+    /** Sends a chat message. False when not connected (the message is not sent). */
+    chat(text: string): boolean {
+      if (!welcomed) return false
+      return write({ type: 'chat', text })
+    },
+
+    /** Sends a reaction. False when not connected. */
+    react(kind: ReactionKind): boolean {
+      if (!welcomed) return false
+      return write({ type: 'react', kind })
     },
 
     /** Closes for good without reporting an end. */

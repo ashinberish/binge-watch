@@ -62,6 +62,10 @@ function setup(overrides: Partial<PartyConnectionDeps> = {}) {
     onMembers: vi.fn(),
     onStatus: vi.fn(),
     onEnd: vi.fn(),
+    onPresence: vi.fn(),
+    onChat: vi.fn(),
+    onReaction: vi.fn(),
+    onError: vi.fn(),
     ...overrides,
   }
   const connection = createPartyConnection(deps)
@@ -140,7 +144,10 @@ describe('party connection', () => {
     await vi.advanceTimersByTimeAsync(100)
     // The server clock is 5 s ahead; the pong comes back after 100 ms.
     socket.push({ type: 'pong', server_time: (Date.now() - 50) / 1000 + 5 })
-    expect(ctx.deps.onWelcome).toHaveBeenCalledWith(playbackState(), 2, you)
+    expect(ctx.deps.onWelcome).toHaveBeenCalledWith(playbackState(), 2, you, {
+      members: [],
+      chat: [],
+    })
     expect(ctx.deps.onMembers).toHaveBeenCalledWith(3)
     expect(ctx.connection.clockOffsetMs()).toBe(5_000)
     expect(ctx.deps.onStatus).toHaveBeenLastCalledWith('live')
@@ -298,5 +305,68 @@ describe('party connection', () => {
     expect(ctx.sockets).toHaveLength(1)
     expect(ctx.deps.onEnd).not.toHaveBeenCalled()
     expect(socket.sent.filter((m) => (m as { type: string }).type === 'ping')).toHaveLength(1)
+  })
+
+  describe('chat, presence and reactions', () => {
+    const sam = { id: 'u2', display_name: 'Sam' }
+    const message = { id: 'm1', user: sam, text: 'hi', sent_at: 1_000 }
+
+    it('passes the welcome’s member list and chat on', async () => {
+      const ctx = setup()
+      ctx.connection.connect()
+      await vi.advanceTimersByTimeAsync(0)
+      const socket = ctx.latest()
+      socket.open()
+      socket.push({ type: 'pong', server_time: Date.now() / 1000 })
+      const members = [
+        { id: 'u1', display_name: 'Kai', is_host: true, status: 'away', joined_at: 1 },
+      ]
+      socket.push({
+        type: 'welcome',
+        state: playbackState(),
+        members: 1,
+        you,
+        members_list: members,
+        chat: [message],
+      })
+      expect(ctx.deps.onWelcome).toHaveBeenCalledWith(playbackState(), 1, you, {
+        members,
+        chat: [message],
+      })
+    })
+
+    it('relays presence, chat, reactions and server errors', async () => {
+      const ctx = setup()
+      const socket = await live(ctx)
+      socket.push({ type: 'presence', members: [] })
+      socket.push({ type: 'chat', message })
+      socket.push({ type: 'reaction', id: 'r1', kind: 'clap', user: sam, at: 1 })
+      socket.push({ type: 'error', detail: "You're sending messages too quickly." })
+      expect(ctx.deps.onPresence).toHaveBeenCalledWith([])
+      expect(ctx.deps.onChat).toHaveBeenCalledWith(message)
+      expect(ctx.deps.onReaction).toHaveBeenCalledWith({ id: 'r1', kind: 'clap', user: sam, at: 1 })
+      expect(ctx.deps.onError).toHaveBeenCalledWith("You're sending messages too quickly.")
+    })
+
+    it('sends status, chat and reactions only once welcomed', async () => {
+      const ctx = setup()
+      ctx.connection.connect()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(ctx.connection.chat('early')).toBe(false)
+      expect(ctx.connection.status('away')).toBe(false)
+      expect(ctx.connection.react('heart')).toBe(false)
+      ctx.latest().open()
+      const socket = ctx.latest()
+      socket.push({ type: 'pong', server_time: Date.now() / 1000 })
+      socket.push({ type: 'welcome', state: playbackState(), members: 2, you })
+      expect(ctx.connection.status('buffering')).toBe(true)
+      expect(ctx.connection.chat('that ending')).toBe(true)
+      expect(ctx.connection.react('sad')).toBe(true)
+      expect(socket.sent.slice(-3)).toEqual([
+        { type: 'status', status: 'buffering' },
+        { type: 'chat', text: 'that ending' },
+        { type: 'react', kind: 'sad' },
+      ])
+    })
   })
 })

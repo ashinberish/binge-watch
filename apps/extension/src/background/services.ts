@@ -13,6 +13,7 @@ import { localStore, serialized, sessionStore } from '../storage'
 import { cachedMatch, matchKey, writeCachedMatch } from '../sync/match-cache'
 import { clearQueue, createFlushScheduler, flush, push, type FlushDeps } from '../sync/queue'
 import type { Services } from './handler'
+import { createPanelTracker } from './panels'
 
 const CONTINUE_WATCHING_LIMIT = 5
 
@@ -291,6 +292,9 @@ async function tabUrl(tabId: number): Promise<string | null> {
   }
 }
 
+/** Open side panels and the tab each one shows (keyed by the panel's port). */
+export const panels = createPanelTracker<chrome.runtime.Port>()
+
 export const rooms = createPartyRooms({
   api: partyApi,
   connect(code, handlers) {
@@ -306,6 +310,8 @@ export const rooms = createPartyRooms({
   },
   sendToTab,
   notifyChanged: (tabId) => broadcast({ type: 'party:changed', tabId }),
+  notifyLive: (tabId, message) => broadcast({ ...message, tabId }),
+  panelFor: (tabId) => panels.viewFor(tabId),
   tabUrl,
   episodeIdForTab: async (tabId) => (await episodeForTab(tabId))?.episode_id ?? null,
   load: async () => (await sessionStore.get()).tabParties ?? {},
@@ -320,6 +326,18 @@ async function startParty(tabId: number) {
 async function partyJoinRequest(tabId: number, url: string, code: string, confirm: boolean) {
   if (!(await session.isSignedIn())) return fail('signed-out')
   return rooms.joinRequest(tabId, url, code, confirm)
+}
+
+/** Called synchronously from the message listener so the pill click's gesture still counts. */
+function openPanel(tabId: number): Promise<boolean> {
+  try {
+    return chrome.sidePanel.open({ tabId }).then(
+      () => true,
+      () => false, // no user gesture (or an older Chrome): the pill explains instead
+    )
+  } catch {
+    return Promise.resolve(false)
+  }
 }
 
 export const services: Services = {
@@ -341,4 +359,9 @@ export const services: Services = {
   partyForTab: (tabId) => rooms.viewFor(tabId),
   partyJoinRequest,
   reportPartyAction: (tabId, action) => rooms.report(tabId, action),
+  setPartyStatus: (tabId, status) => rooms.setStatus(tabId, status),
+  reactInParty: (tabId, kind) => rooms.react(tabId, kind),
+  sendPartyChat: (tabId, text) => rooms.sendChat(tabId, text),
+  markPartyRead: (tabId) => rooms.markRead(tabId),
+  openPanel,
 }

@@ -333,6 +333,10 @@ export function createSyncEngine(deps: SyncEngineDeps) {
     get autoplayBlocked() {
       return blocked
     },
+    /** A waiting/stalled event has not been followed by playing yet. */
+    get buffering() {
+      return buffering
+    },
     get nudging() {
       return nudgeUntil !== null
     },

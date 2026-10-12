@@ -8,6 +8,10 @@ import {
   type SyncEngine,
 } from '../../party/engine'
 import { parsePartyFragment, stripPartyFragment } from '../../party/invite'
+import type { ReactionKind } from '../../party/protocol'
+import { createReactionQueue, type FloatingReaction } from '../../party/reactions'
+import { createStatusReporter, deriveStatus } from '../../party/status'
+import { createToastQueue, type ChatToast } from '../../party/toasts'
 
 /** Where the pill sits: the top-right corner of the video, in viewport pixels. */
 export interface PillAnchor {
@@ -15,12 +19,39 @@ export interface PillAnchor {
   right: number
 }
 
+/** Where floating reactions start: the video's bottom-right, above its control bar. */
+export interface StageAnchor {
+  bottom: number
+  right: number
+}
+
+/** The pill's chat and reactions corner. */
+export interface PillChat {
+  /** Chat messages from others not yet seen in the side panel. */
+  unread: number
+  panelOpen: boolean
+  /** The six reaction buttons are showing. */
+  reactionsOpen: boolean
+  /** "Sam: that ending", while the side panel is closed. */
+  toast: ChatToast | null
+  /** The side panel could not be opened from the page: tell the viewer how. */
+  hint: string | null
+}
+
 export type PartyOverlayView =
   /** An invite link opened this page: ask before joining. */
   | { kind: 'invite'; hostName: string; joining: boolean; error: string | null }
   /** An invite link that cannot be used. */
   | { kind: 'notice'; message: string }
-  | { kind: 'pill'; label: string; needsClick: boolean; anchor: PillAnchor | null }
+  | {
+      kind: 'pill'
+      label: string
+      needsClick: boolean
+      anchor: PillAnchor | null
+      chat: PillChat
+      reactions: FloatingReaction[]
+      stage: StageAnchor | null
+    }
   | { kind: 'ended'; message: string; anchor: PillAnchor | null }
 
 export interface PartyOverlayDeps {
@@ -31,12 +62,19 @@ export interface PartyOverlayDeps {
   /** Rewrites the address bar without navigating (history.replaceState). */
   replaceUrl: (url: string) => void
   now?: () => number
+  /** prefers-reduced-motion: reactions fade in place instead of floating up. */
+  reducedMotion?: () => boolean
 }
 
 /** How long "The party has ended" stays up. */
 export const ENDED_NOTICE_MS = 4_000
 /** Keep the pill clear of the video's edge. */
 const PILL_INSET = 12
+/** Floating reactions start this far above the video's bottom edge, clear of its controls. */
+const CONTROLS_CLEARANCE = 72
+/** How long "Open the side panel to chat" stays up. */
+export const PANEL_HINT_MS = 4_000
+export const PANEL_HINT = 'Open the side panel to chat'
 
 export function membersLabel(count: number): string {
   return `Watch party · ${Math.max(1, count)} watching`
@@ -77,8 +115,52 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
   let notice: string | null = null
   let ended: { message: string; until: number } | null = null
   let lastDrawn = 'null'
+  let unread = 0
+  let panelOpen = false
+  let reactionsOpen = false
+  let hintUntil = 0
+  let hiddenSince: number | null = null
 
   const isAd = () => adapter.isAd?.(doc) ?? false
+  const reducedMotion =
+    deps.reducedMotion ??
+    (() => doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+  const reactions = createReactionQueue({ now, reducedMotion })
+  const toasts = createToastQueue({ now })
+  const status = createStatusReporter({
+    send: (next) => {
+      deps.send({ type: 'party:status', adapter: adapter.id, status: next }).catch(() => undefined)
+    },
+  })
+
+  /** Derives this viewer's status from the player and the page, and reports changes. */
+  function updateStatus() {
+    if (!party) return
+    if (doc.visibilityState === 'hidden') hiddenSince ??= now()
+    else hiddenSince = null
+    status.update(
+      deriveStatus({
+        isAd: isAd(),
+        buffering: engine?.buffering ?? false,
+        hiddenSince,
+        now: now(),
+      }),
+    )
+  }
+
+  function stage(): StageAnchor | null {
+    const video = adapter.findVideo(doc)
+    if (!video) return null
+    const rect = video.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return null
+    const bottom = rect.bottom ?? rect.top + rect.height
+    const viewportWidth = doc.documentElement.clientWidth || rect.right
+    const viewportHeight = doc.documentElement.clientHeight || bottom
+    return {
+      bottom: Math.max(PILL_INSET, viewportHeight - bottom + CONTROLS_CLEARANCE),
+      right: Math.max(PILL_INSET, viewportWidth - rect.right + PILL_INSET * 2),
+    }
+  }
 
   function anchor(): PillAnchor | null {
     const video = adapter.findVideo(doc)
@@ -100,7 +182,24 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
     if (notice) return { kind: 'notice', message: notice }
     if (party) {
       if (isAd()) return null
-      return { kind: 'pill', label: membersLabel(party.members), needsClick, anchor: anchor() }
+      // A bubble in fullscreen would sit on the player's own controls: chat waits in the panel.
+      const toast = panelOpen || doc.fullscreenElement ? null : toasts.current
+      const floating = reactions.active()
+      return {
+        kind: 'pill',
+        label: membersLabel(party.members),
+        needsClick,
+        anchor: anchor(),
+        chat: {
+          unread: panelOpen ? 0 : unread,
+          panelOpen,
+          reactionsOpen,
+          toast,
+          hint: now() < hintUntil ? PANEL_HINT : null,
+        },
+        reactions: floating,
+        stage: floating.length > 0 ? stage() : null,
+      }
     }
     if (ended && now() < ended.until) {
       return { kind: 'ended', message: ended.message, anchor: anchor() }
@@ -118,7 +217,13 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
   }
 
   function enter(view: PartyTabView) {
+    unread = view.unread
+    panelOpen = view.panelOpen
     if (party?.code !== view.code) {
+      status.reset()
+      reactions.clear()
+      toasts.clear()
+      reactionsOpen = false
       engine?.dispose()
       engine = createSyncEngine({
         now,
@@ -138,6 +243,7 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
     notice = null
     ended = null
     if (view.state) engine?.receive(view.state, view.clockOffsetMs)
+    updateStatus()
     draw()
   }
 
@@ -146,6 +252,12 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
     engine = null
     party = null
     needsClick = false
+    status.dispose()
+    status.reset()
+    reactions.clear()
+    toasts.clear()
+    reactionsOpen = false
+    unread = 0
     ended = message ? { message, until: now() + ENDED_NOTICE_MS } : null
     draw()
   }
@@ -256,12 +368,71 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
           .catch(() => undefined)
         return
       }
-      if (message.type === 'party:state') {
-        engine?.receive(message.state, message.clockOffsetMs)
-      } else {
-        party = { ...party, members: message.count }
+      switch (message.type) {
+        case 'party:state':
+          engine?.receive(message.state, message.clockOffsetMs)
+          return
+        case 'party:members':
+          party = { ...party, members: message.count }
+          break
+        case 'party:chat':
+          unread = message.unread
+          panelOpen = message.panelOpen
+          if (!panelOpen) toasts.push(message.message)
+          break
+        case 'party:unread':
+          unread = message.unread
+          panelOpen = message.panelOpen
+          if (panelOpen) toasts.clear()
+          break
+        case 'party:reaction':
+          // Never over an ad.
+          if (!isAd()) reactions.add(message.reaction)
+          break
+        default:
+          // Presence and errors are for the side panel.
+          return
+      }
+      draw()
+    },
+
+    /** The pill's reaction button: shows or hides the six reactions. */
+    toggleReactions() {
+      reactionsOpen = !reactionsOpen
+      draw()
+    },
+
+    closeReactions() {
+      if (!reactionsOpen) return
+      reactionsOpen = false
+      draw()
+    },
+
+    react(kind: ReactionKind) {
+      if (!party) return
+      deps.send({ type: 'party:react', kind }).catch(() => undefined)
+    },
+
+    /**
+     * The pill's chat button. The service worker opens the side panel while this click's
+     * gesture is current; where Chrome does not allow that, the pill says how instead.
+     */
+    async openPanel() {
+      let opened = false
+      try {
+        opened = (await deps.send({ type: 'party:open-panel' })).ok
+      } catch {
+        opened = false
+      }
+      if (!opened) {
+        hintUntil = now() + PANEL_HINT_MS
         draw()
       }
+    },
+
+    /** The page was hidden or shown (visibilitychange). */
+    visibilityChanged() {
+      updateStatus()
     },
 
     /** A media event from the page. Only the player's main video counts. */
@@ -271,6 +442,7 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
       if (!video || target !== video) return
       engine.setVideo(video)
       engine.handleEvent(type as MediaEventType)
+      if (type === 'waiting' || type === 'stalled' || type === 'playing') updateStatus()
     },
 
     tick() {
@@ -278,6 +450,9 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
         engine.setVideo(adapter.findVideo(doc))
         engine.tick()
       }
+      updateStatus()
+      toasts.advance()
+      reactions.prune()
       draw()
     },
 

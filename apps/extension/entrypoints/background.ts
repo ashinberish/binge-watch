@@ -1,5 +1,6 @@
 import { createHandler } from '../src/background/handler'
-import { forgetTab, rooms, scheduler, services } from '../src/background/services'
+import { isPanelReport, PANEL_PORT } from '../src/background/panels'
+import { forgetTab, panels, rooms, scheduler, services } from '../src/background/services'
 import { session } from '../src/lib/api'
 
 const SYNC_ALARM = 'nightreel:sync'
@@ -28,7 +29,31 @@ export default defineBackground(() => {
   // Reconnect parties that were live before this worker was stopped.
   void session.load().then(rooms.restore)
 
+  // Each open side panel says which tab (and view) it shows, so chat can count unread
+  // messages and the pill knows whether to show bubbles. The port closing means the
+  // panel closed.
+  const extensionOrigin = chrome.runtime.getURL('')
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== PANEL_PORT || !port.sender?.url?.startsWith(extensionOrigin)) {
+      port.disconnect()
+      return
+    }
+    const changed = (tabIds: number[]) => {
+      for (const tabId of tabIds) void rooms.panelChanged(tabId)
+    }
+    port.onMessage.addListener((report: unknown) => {
+      if (isPanelReport(report)) changed(panels.update(port, report))
+    })
+    port.onDisconnect.addListener(() => changed(panels.remove(port)))
+  })
+
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    // chrome.sidePanel.open only works while the click's user gesture is current, so this
+    // one is handled straight away (no await first). It needs no session.
+    if ((message as { type?: unknown } | null)?.type === 'party:open-panel') {
+      void handle(message, sender).then(reply, () => reply(undefined))
+      return true
+    }
     void session
       .load()
       .then(() => handle(message, sender))

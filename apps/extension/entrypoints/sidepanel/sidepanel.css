@@ -50,3 +50,188 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Episodes inside a tab: the tab already pads its content. */
+.nr-tabs__content > .nr-popup {
+  padding: 0;
+}
+
+.nr-tab-count {
+  color: var(--nr-color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Party tab */
+.nr-room {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nr-space-6);
+}
+
+.nr-members {
+  display: grid;
+  gap: var(--nr-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nr-members__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'avatar name badge'
+    'avatar status status';
+  column-gap: var(--nr-space-3);
+  align-items: center;
+}
+
+.nr-members__row > .nr-avatar {
+  grid-area: avatar;
+}
+
+.nr-members__name {
+  grid-area: name;
+  overflow: hidden;
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nr-members__you {
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-caption);
+}
+
+.nr-members__row > .nr-badge {
+  grid-area: badge;
+}
+
+.nr-members__status {
+  grid-area: status;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nr-space-1);
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+}
+
+.nr-chat {
+  position: relative;
+}
+
+.nr-chat__log {
+  max-height: 50vh;
+  min-height: 160px;
+  overflow-y: auto;
+  padding: var(--nr-space-2);
+  border: 1px solid var(--nr-color-border);
+  border-radius: var(--nr-radius-md);
+  background: var(--nr-color-surface);
+}
+
+.nr-chat__log:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-chat__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nr-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nr-chat__msg {
+  display: grid;
+  gap: 2px;
+  padding-left: var(--nr-space-2);
+}
+
+/* Your own messages: labelled "You" and set on a raised band with an edge line. */
+.nr-chat__msg--own {
+  padding: var(--nr-space-1) var(--nr-space-2);
+  border-radius: var(--nr-radius-sm);
+  background: var(--nr-color-surface-raised);
+  box-shadow: inset 2px 0 0 var(--nr-color-border-strong);
+}
+
+.nr-chat__meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nr-space-2);
+}
+
+.nr-chat__name {
+  color: var(--nr-color-ink);
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+}
+
+.nr-chat__time {
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+}
+
+.nr-chat__text {
+  font: var(--nr-type-body-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.nr-chat__jump {
+  position: absolute;
+  bottom: var(--nr-space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--nr-space-1) var(--nr-space-3);
+  border: 1px solid var(--nr-color-border);
+  border-radius: var(--nr-radius-pill);
+  background: var(--nr-color-surface-overlay);
+  color: var(--nr-color-ink);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+  cursor: pointer;
+}
+
+.nr-chat__jump:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-reaction-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nr-space-1);
+}
+
+.nr-composer {
+  display: grid;
+  gap: var(--nr-space-1);
+}
+
+.nr-composer__row {
+  display: flex;
+  gap: var(--nr-space-2);
+  align-items: center;
+}
+
+.nr-composer__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.nr-composer__note {
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+}
+
+.nr-composer__note.nr-popup__error {
+  color: var(--nr-color-danger);
+}

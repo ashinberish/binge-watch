@@ -5,6 +5,7 @@ import type { PartyConnection } from '../../src/party/connection'
 import {
   createPartyRooms,
   type ConnectionHandlers,
+  type PanelView,
   type PartyInfo,
   type StoredParty,
 } from '../../src/party/rooms'
@@ -29,6 +30,7 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
     connection: PartyConnection & { close: ReturnType<typeof vi.fn> }
   }> = []
   let saved: Record<string, StoredParty> = {}
+  const panel: Record<number, PanelView> = {}
   const deps = {
     api: {
       create: vi.fn(async () => ok(party())),
@@ -40,6 +42,9 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
       const connection = {
         connect: vi.fn(),
         control: vi.fn(() => true),
+        status: vi.fn(() => true),
+        chat: vi.fn(() => true),
+        react: vi.fn(() => true),
         close: vi.fn(),
         clockOffsetMs: () => 250,
         connected: true,
@@ -49,6 +54,8 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
     }),
     sendToTab: vi.fn(),
     notifyChanged: vi.fn(),
+    notifyLive: vi.fn(),
+    panelFor: (tabId: number) => panel[tabId] ?? { open: false, reading: false },
     tabUrl: vi.fn(async (tabId: number) => tabs[tabId] ?? null),
     episodeIdForTab: vi.fn(async () => 'e1'),
     load: vi.fn(async () => saved),
@@ -57,7 +64,14 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
     }),
   }
   const rooms = createPartyRooms(deps)
-  return { deps, rooms, connections, saved: () => saved, seed: (s: typeof saved) => (saved = s) }
+  return {
+    deps,
+    rooms,
+    connections,
+    panel,
+    saved: () => saved,
+    seed: (s: typeof saved) => (saved = s),
+  }
 }
 
 describe('party rooms', () => {
@@ -94,6 +108,7 @@ describe('party rooms', () => {
     expect(deps.sendToTab.mock.calls).toEqual([
       [7, { type: 'party:state', code: 'K7xQ2m', state: playbackState(), clockOffsetMs: 250 }],
       [7, { type: 'party:members', code: 'K7xQ2m', count: 2 }],
+      [7, { type: 'party:presence', code: 'K7xQ2m', members: [] }],
       [
         7,
         {
@@ -208,5 +223,141 @@ describe('party rooms', () => {
     expect(ctx.connections.map((c) => c.code)).toEqual(['K7xQ2m'])
     expect(await ctx.rooms.viewFor(7)).toMatchObject({ code: 'K7xQ2m' })
     expect(ctx.saved()).toEqual({ '7': stored })
+  })
+
+  describe('chat, presence and reactions', () => {
+    const kai = { id: 'u1', display_name: 'Kai' }
+    const sam = { id: 'u2', display_name: 'Sam' }
+    const msg = (id: string, user = sam) => ({ id, user, text: 'that ending', sent_at: 1_000 })
+    const members = [
+      { id: 'u1', display_name: 'Kai', is_host: true, status: 'watching' as const, joined_at: 1 },
+      { id: 'u2', display_name: 'Sam', is_host: false, status: 'ad' as const, joined_at: 2 },
+    ]
+
+    async function welcomed() {
+      const ctx = setup()
+      await ctx.rooms.start(7)
+      const { handlers, connection } = ctx.connections[0]!
+      handlers.onWelcome(playbackState(), 2, kai, { members, chat: [msg('m0')] })
+      ctx.deps.sendToTab.mockClear()
+      ctx.deps.notifyLive.mockClear()
+      return { ...ctx, handlers, connection }
+    }
+
+    it('keeps the member list and chat history from the welcome', async () => {
+      const { rooms } = await welcomed()
+      expect(await rooms.viewFor(7)).toMatchObject({
+        members,
+        youId: 'u1',
+        chat: [msg('m0')],
+        unread: 0,
+        panelOpen: false,
+      })
+    })
+
+    it('relays presence to the tab and to extension pages', async () => {
+      const { rooms, deps, handlers } = await welcomed()
+      const next = [members[0]!, { ...members[1]!, status: 'away' as const }]
+      handlers.onPresence(next)
+      const relayed = { type: 'party:presence', code: 'K7xQ2m', members: next }
+      expect(deps.sendToTab).toHaveBeenCalledWith(7, relayed)
+      expect(deps.notifyLive).toHaveBeenCalledWith(7, relayed)
+      expect((await rooms.viewFor(7))?.members).toEqual(next)
+    })
+
+    it('counts unread chat from others while the Party tab is not on screen', async () => {
+      const { rooms, deps, handlers, panel } = await welcomed()
+      handlers.onChat(msg('m1'))
+      handlers.onChat(msg('m1')) // replayed: ignored
+      handlers.onChat(msg('m2', kai)) // your own
+      expect(deps.sendToTab).toHaveBeenCalledWith(7, {
+        type: 'party:chat',
+        code: 'K7xQ2m',
+        message: msg('m1'),
+        unread: 1,
+        panelOpen: false,
+      })
+      expect(deps.sendToTab).toHaveBeenCalledTimes(2)
+      expect((await rooms.viewFor(7))?.unread).toBe(1)
+
+      panel[7] = { open: true, reading: true }
+      handlers.onChat(msg('m3'))
+      expect(deps.notifyLive).toHaveBeenLastCalledWith(
+        7,
+        expect.objectContaining({ type: 'party:chat', unread: 1, panelOpen: true }),
+      )
+    })
+
+    it('resets unread when the Party tab is shown, and tells the pill', async () => {
+      const { rooms, deps, handlers, panel } = await welcomed()
+      handlers.onChat(msg('m1'))
+      handlers.onChat(msg('m2'))
+      await rooms.markRead(7)
+      expect(deps.sendToTab).toHaveBeenLastCalledWith(7, {
+        type: 'party:unread',
+        code: 'K7xQ2m',
+        unread: 0,
+        panelOpen: false,
+      })
+      expect((await rooms.viewFor(7))?.unread).toBe(0)
+
+      handlers.onChat(msg('m3'))
+      panel[7] = { open: true, reading: true }
+      await rooms.panelChanged(7)
+      expect(deps.sendToTab).toHaveBeenLastCalledWith(7, {
+        type: 'party:unread',
+        code: 'K7xQ2m',
+        unread: 0,
+        panelOpen: true,
+      })
+    })
+
+    it('caps the chat at 50 messages', async () => {
+      const { rooms, handlers } = await welcomed()
+      for (let i = 1; i <= 60; i += 1) handlers.onChat(msg(`m${i}`))
+      const view = await rooms.viewFor(7)
+      expect(view?.chat).toHaveLength(50)
+      expect(view?.chat[0]?.id).toBe('m11')
+      expect(view?.unread).toBe(60)
+    })
+
+    it('relays reactions and server errors', async () => {
+      const { deps, handlers } = await welcomed()
+      const reaction = { id: 'r1', kind: 'wow' as const, user: sam, at: 1 }
+      handlers.onReaction(reaction)
+      handlers.onError("You're sending messages too quickly.")
+      expect(deps.sendToTab).toHaveBeenCalledWith(7, {
+        type: 'party:reaction',
+        code: 'K7xQ2m',
+        reaction,
+      })
+      expect(deps.notifyLive).toHaveBeenCalledWith(7, {
+        type: 'party:error',
+        code: 'K7xQ2m',
+        detail: "You're sending messages too quickly.",
+      })
+    })
+
+    it('sends chat, reactions and status through the tab’s connection', async () => {
+      const { rooms, connection } = await welcomed()
+      expect(await rooms.sendChat(7, 'hi')).toBe(true)
+      expect(connection.chat).toHaveBeenCalledWith('hi')
+      expect(await rooms.react(7, 'heart')).toBe(true)
+      expect(connection.react).toHaveBeenCalledWith('heart')
+      expect(await rooms.setStatus(7, 'away')).toBe(true)
+      expect(connection.status).toHaveBeenCalledWith('away')
+      expect(await rooms.sendChat(8, 'hi')).toBe(false)
+      expect(await rooms.react(8, 'heart')).toBe(false)
+    })
+
+    it('sends the last status again after a reconnect', async () => {
+      const { rooms, connection, handlers } = await welcomed()
+      await rooms.setStatus(7, 'ad')
+      vi.mocked(connection.status).mockClear()
+      handlers.onWelcome(playbackState({ seq: 5 }), 2, kai, { members, chat: [] })
+      expect(connection.status).toHaveBeenCalledWith('ad')
+      // Chat history survives a reconnect whose welcome repeats or drops older messages.
+      expect((await rooms.viewFor(7))?.chat.map((m) => m.id)).toEqual(['m0'])
+    })
   })
 })

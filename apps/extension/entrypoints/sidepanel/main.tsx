@@ -2,11 +2,17 @@ import '@nightreel/ui/styles.css'
 import '../../src/styles/pages.css'
 import './sidepanel.css'
 
-import { Skeleton } from '@nightreel/ui'
+import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '@nightreel/ui'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { EpisodeList } from '../../src/features/episodes/EpisodeList'
+import { PartyRoom } from '../../src/features/party/PartyRoom'
+import {
+  usePageVisible,
+  usePanelPresence,
+  usePartyRoom,
+} from '../../src/features/party/usePartyRoom'
 import { StreakLine } from '../../src/features/streaks/StreakLine'
 import { failureMessage } from '../../src/lib/result'
 import { onBroadcast, send } from '../../src/messaging/protocol'
@@ -17,9 +23,16 @@ async function activeTabId(): Promise<number | null> {
   return tab?.id ?? null
 }
 
+type PanelTab = 'party' | 'episodes'
+
 function SidePanel() {
   const [tabId, setTabId] = useState<number | null>(null)
   const [version, setVersion] = useState(0)
+  const [panelTab, setPanelTab] = useState<PanelTab>('party')
+  const room = usePartyRoom(tabId)
+  const visible = usePageVisible()
+  const party = room.view
+  usePanelPresence(tabId, party !== null && panelTab === 'party' && visible)
 
   useEffect(() => {
     void activeTabId().then(setTabId)
@@ -89,14 +102,54 @@ function SidePanel() {
     )
   }
 
+  const header = (
+    <header className="nr-popup__header">
+      <span className="nr-wordmark">
+        nightreel<span className="nr-wordmark__dot">.</span>
+      </span>
+    </header>
+  )
+
+  if (!party) {
+    return (
+      <main className="nr-popup">
+        {header}
+        {body}
+      </main>
+    )
+  }
+
+  const unread = panelTab === 'party' ? 0 : party.unread
   return (
     <main className="nr-popup">
-      <header className="nr-popup__header">
-        <span className="nr-wordmark">
-          nightreel<span className="nr-wordmark__dot">.</span>
-        </span>
-      </header>
-      {body}
+      {header}
+      <Tabs
+        value={panelTab}
+        onValueChange={(value) => setPanelTab(value === 'episodes' ? 'episodes' : 'party')}
+      >
+        <TabsList aria-label="Side panel">
+          <TabsTrigger value="party">
+            Party
+            {unread > 0 ? <span className="nr-tab-count"> · {unread} new</span> : null}
+          </TabsTrigger>
+          <TabsTrigger value="episodes">Episodes</TabsTrigger>
+        </TabsList>
+        <TabsContent value="party">
+          <PartyRoom
+            members={party.members}
+            youId={party.youId}
+            chat={party.chat}
+            connection={party.status === 'invited' ? 'connecting' : party.status}
+            error={room.error}
+            onSend={room.sendChat}
+            onReact={room.react}
+            onClearError={room.clearError}
+          />
+        </TabsContent>
+        <TabsContent value="episodes">
+          <div className="nr-popup">{body}</div>
+        </TabsContent>
+      </Tabs>
     </main>
   )
 }

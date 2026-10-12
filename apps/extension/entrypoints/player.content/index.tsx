@@ -94,6 +94,10 @@ export default defineContentScript({
             onJoin={() => void party.join()}
             onDismiss={party.dismiss}
             onResync={party.resync}
+            onOpenPanel={() => void party.openPanel()}
+            onToggleReactions={party.toggleReactions}
+            onCloseReactions={party.closeReactions}
+            onReact={party.react}
           />
         ) : null
         renderOverlay()
@@ -105,6 +109,7 @@ export default defineContentScript({
     chrome.runtime.onMessage.addListener(onPartyMessage)
     ctx.onInvalidated(() => chrome.runtime.onMessage.removeListener(onPartyMessage))
     ctx.addEventListener(window, 'wxt:locationchange', () => party.checkInvite())
+    ctx.addEventListener(document, 'visibilitychange', () => party.visibilityChanged())
     for (const type of MEDIA_EVENTS) {
       ctx.addEventListener(document, type, (event) => party.mediaEvent(type, event.target), {
         capture: true,

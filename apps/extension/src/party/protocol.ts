@@ -23,20 +23,81 @@ export interface PlaybackState {
 
 export type ControlAction = 'play' | 'pause' | 'seek'
 
+/** What a member is doing right now, as their content script reports it. */
+export type MemberStatus = 'watching' | 'buffering' | 'ad' | 'away'
+
+export const MEMBER_STATUSES: readonly MemberStatus[] = ['watching', 'buffering', 'ad', 'away']
+
+/** One person in the room, from the welcome's `members_list` and `presence` frames. */
+export interface RoomMember {
+  id: string
+  display_name: string
+  is_host: boolean
+  status: MemberStatus
+  /** Server epoch seconds. */
+  joined_at: number
+}
+
+export interface ChatMessage {
+  id: string
+  user: PartyMember
+  text: string
+  /** Server epoch seconds. */
+  sent_at: number
+}
+
+export type ReactionKind = 'heart' | 'laugh' | 'wow' | 'fire' | 'clap' | 'sad'
+
+export const REACTION_KINDS: readonly ReactionKind[] = [
+  'heart',
+  'laugh',
+  'wow',
+  'fire',
+  'clap',
+  'sad',
+]
+
+export interface Reaction {
+  id: string
+  kind: ReactionKind
+  user: PartyMember
+  /** Server epoch seconds. */
+  at: number
+}
+
+/** The server accepts 1–500 characters per chat message (after cleaning). */
+export const CHAT_MAX_LENGTH = 500
+/** The server keeps (and sends in the welcome) this many recent messages. */
+export const CHAT_HISTORY_LIMIT = 50
+
 // Server → client
 export type ServerMessage =
-  | { type: 'welcome'; state: PlaybackState; members: number; you: PartyMember }
+  | {
+      type: 'welcome'
+      state: PlaybackState
+      members: number
+      you: PartyMember
+      /** Empty when the server does not send them. */
+      members_list: RoomMember[]
+      chat: ChatMessage[]
+    }
   | { type: 'state'; state: PlaybackState }
   | { type: 'members'; count: number }
   | { type: 'pong'; server_time: number }
   | { type: 'ended' }
   | { type: 'error'; detail: string }
+  | { type: 'presence'; members: RoomMember[] }
+  | { type: 'chat'; message: ChatMessage }
+  | { type: 'reaction'; reaction: Reaction }
 
 // Client → server
 export type ClientMessage =
   | { type: 'auth'; access_token: string }
   | { type: 'control'; action: ControlAction; position: number; rate?: number }
   | { type: 'ping' }
+  | { type: 'status'; status: MemberStatus }
+  | { type: 'chat'; text: string }
+  | { type: 'react'; kind: ReactionKind }
 
 /** Close codes the server uses on top of the standard ones. */
 export const CloseCode = {
@@ -61,6 +122,67 @@ const isFiniteNumber = (value: unknown): value is number =>
 
 function isMember(value: unknown): value is PartyMember {
   return isRecord(value) && typeof value.id === 'string' && typeof value.display_name === 'string'
+}
+
+const MEMBER_STATUS_SET = new Set<string>(MEMBER_STATUSES)
+const REACTION_KIND_SET = new Set<string>(REACTION_KINDS)
+
+export function isMemberStatus(value: unknown): value is MemberStatus {
+  return typeof value === 'string' && MEMBER_STATUS_SET.has(value)
+}
+
+export function isReactionKind(value: unknown): value is ReactionKind {
+  return typeof value === 'string' && REACTION_KIND_SET.has(value)
+}
+
+/**
+ * A server timestamp as epoch seconds. Accepts epoch seconds or an ISO 8601 string,
+ * since JSON-dumped datetimes arrive as strings. Null when it is neither.
+ */
+export function toEpochSeconds(value: unknown): number | null {
+  if (isFiniteNumber(value)) return value
+  if (typeof value === 'string' && value) {
+    const ms = Date.parse(value)
+    return Number.isFinite(ms) ? ms / 1000 : null
+  }
+  return null
+}
+
+const userOf = (value: PartyMember): PartyMember => ({
+  id: value.id,
+  display_name: value.display_name,
+})
+
+/** One member of a presence list. An unknown status reads as watching. */
+export function parseRoomMember(value: unknown): RoomMember | null {
+  if (!isMember(value)) return null
+  const record = value as unknown as Record<string, unknown>
+  return {
+    id: value.id,
+    display_name: value.display_name,
+    is_host: record.is_host === true,
+    status: isMemberStatus(record.status) ? record.status : 'watching',
+    joined_at: toEpochSeconds(record.joined_at) ?? 0,
+  }
+}
+
+export function parseChatMessage(value: unknown): ChatMessage | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return null
+  if (!isMember(value.user) || typeof value.text !== 'string') return null
+  const sentAt = toEpochSeconds(value.sent_at)
+  if (sentAt === null) return null
+  return { id: value.id, user: userOf(value.user), text: value.text, sent_at: sentAt }
+}
+
+/** Members (or messages) of a list; malformed entries are skipped. Not a list → null. */
+function parseList<T>(value: unknown, parse: (item: unknown) => T | null): T[] | null {
+  if (!Array.isArray(value)) return null
+  const out: T[] = []
+  for (const item of value) {
+    const parsed = parse(item)
+    if (parsed) out.push(parsed)
+  }
+  return out
 }
 
 export function isPlaybackState(value: unknown): value is PlaybackState {
@@ -93,7 +215,9 @@ export function parseServerMessage(data: unknown): ServerMessage | null {
             type: 'welcome',
             state: { ...value.state, by: value.state.by ?? null },
             members: value.members,
-            you: value.you,
+            you: userOf(value.you),
+            members_list: parseList(value.members_list, parseRoomMember) ?? [],
+            chat: (parseList(value.chat, parseChatMessage) ?? []).slice(-CHAT_HISTORY_LIMIT),
           }
         : null
     case 'state':
@@ -110,6 +234,24 @@ export function parseServerMessage(data: unknown): ServerMessage | null {
       return { type: 'ended' }
     case 'error':
       return { type: 'error', detail: typeof value.detail === 'string' ? value.detail : '' }
+    case 'presence': {
+      const members = parseList(value.members, parseRoomMember)
+      return members ? { type: 'presence', members } : null
+    }
+    case 'chat': {
+      const message = parseChatMessage(value.message)
+      return message ? { type: 'chat', message } : null
+    }
+    case 'reaction': {
+      const at = toEpochSeconds(value.at)
+      if (typeof value.id !== 'string' || !isReactionKind(value.kind) || !isMember(value.user)) {
+        return null
+      }
+      return {
+        type: 'reaction',
+        reaction: { id: value.id, kind: value.kind, user: userOf(value.user), at: at ?? 0 },
+      }
+    }
     default:
       return null
   }
