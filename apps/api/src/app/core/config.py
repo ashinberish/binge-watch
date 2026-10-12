@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "nightreel-api"
     access_token_ttl_seconds: int = Field(default=15 * 60, gt=0)
     refresh_token_ttl_seconds: int = Field(default=30 * 24 * 60 * 60, gt=0)
+    extension_code_ttl_seconds: int = Field(default=60, gt=0)
 
     argon2_time_cost: int = Field(default=3, ge=1)
     argon2_memory_cost: int = Field(default=64 * 1024, ge=8)

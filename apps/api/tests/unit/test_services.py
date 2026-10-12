@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError
 from app.core.security import create_refresh_token, hash_token
-from app.modules.auth.repository import RefreshTokenRepository
+from app.modules.auth.repository import ExtensionCodeRepository, RefreshTokenRepository
 from app.modules.auth.schemas import LoginRequest, RegisterRequest
 from app.modules.auth.service import AuthService
 from app.modules.profiles.repository import ProfileRepository
@@ -24,7 +24,12 @@ from app.modules.users.service import UserService
 
 
 def auth_service(session: AsyncSession, settings: Settings) -> AuthService:
-    return AuthService(UserRepository(session), RefreshTokenRepository(session), settings)
+    return AuthService(
+        UserRepository(session),
+        RefreshTokenRepository(session),
+        ExtensionCodeRepository(session),
+        settings,
+    )
 
 
 async def make_user(

@@ -251,6 +251,115 @@
         }
       }
     },
+    "/api/v1/auth/extension-code": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create Extension Code",
+        "description": "Issue a one-time code for the Chrome extension sign-in handoff.\n\nThe signed-in web app calls this, then redirects to `redirect_uri` with the code; the\nextension redeems it at `POST /auth/extension-token`. Codes expire after 60 seconds.",
+        "operationId": "auth_create_extension_code",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionCode"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/extension-token": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Exchange Extension Code",
+        "description": "Redeem a one-time extension code (single use, bound to its redirect URI) for tokens.",
+        "operationId": "auth_exchange_extension_code",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/me": {
       "get": {
         "tags": [
@@ -756,6 +865,132 @@
         }
       }
     },
+    "/api/v1/catalog/match": {
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Match Episode",
+        "description": "Resolve what is playing on a streaming site to a catalog episode.\n\nLookup order: a previous match for `(provider, external_id)`; then the show by\ncase-insensitive exact title plus season/episode numbers. Anything still missing\n(show, season, episode) is created on first sight, so every supported player works\nbefore metadata enrichment. Always returns 200 with the matched episode.",
+        "operationId": "catalog_match",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/catalog/episodes/{episode_id}/next": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Get Next Episode",
+        "description": "The episode after this one: next in the season, else the first of the next season.\n\n404 if the episode doesn't exist or is the last one of its show.",
+        "operationId": "catalog_get_next_episode",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Episode Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextEpisode"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/history/{episode_id}/progress": {
       "put": {
         "tags": [
@@ -1103,6 +1338,68 @@
         ],
         "title": "EpisodeRead"
       },
+      "ExtensionCode": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Single-use code to pass to `POST /auth/extension-token`."
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In",
+            "description": "Code lifetime in seconds."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "expires_in"
+        ],
+        "title": "ExtensionCode"
+      },
+      "ExtensionCodeRequest": {
+        "properties": {
+          "redirect_uri": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https://[a-p]{32}\\.chromiumapp\\.org/.*$",
+            "title": "Redirect Uri",
+            "description": "The extension's `chrome.identity.getRedirectURL()` (`https://<extension-id>.chromiumapp.org/...`).",
+            "examples": [
+              "https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/callback"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "redirect_uri"
+        ],
+        "title": "ExtensionCodeRequest"
+      },
+      "ExtensionTokenRequest": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "redirect_uri": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Redirect Uri",
+            "description": "Must equal the `redirect_uri` the code was issued for."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "redirect_uri"
+        ],
+        "title": "ExtensionTokenRequest"
+      },
       "HealthStatus": {
         "properties": {
           "status": {
@@ -1135,6 +1432,187 @@
           "password"
         ],
         "title": "LoginRequest"
+      },
+      "MatchRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,32}$",
+            "title": "Provider",
+            "description": "Streaming site key, e.g. `netflix`."
+          },
+          "external_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "External Id",
+            "description": "The provider's own id for this episode."
+          },
+          "show_title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Show Title"
+          },
+          "episode_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Title"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "external_id",
+          "show_title"
+        ],
+        "title": "MatchRequest",
+        "description": "What a content script sees on a streaming site's player page."
+      },
+      "MatchResult": {
+        "properties": {
+          "episode_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Episode Id"
+          },
+          "show_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Show Id"
+          },
+          "show_title": {
+            "type": "string",
+            "title": "Show Title"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Url"
+          },
+          "season_number": {
+            "type": "integer",
+            "title": "Season Number"
+          },
+          "episode_number": {
+            "type": "integer",
+            "title": "Episode Number"
+          },
+          "episode_title": {
+            "type": "string",
+            "title": "Episode Title"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds"
+          },
+          "next_episode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextEpisode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "episode_id",
+          "show_id",
+          "show_title",
+          "poster_url",
+          "season_number",
+          "episode_number",
+          "episode_title",
+          "duration_seconds",
+          "next_episode"
+        ],
+        "title": "MatchResult"
+      },
+      "NextEpisode": {
+        "properties": {
+          "episode_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Episode Id"
+          },
+          "season_number": {
+            "type": "integer",
+            "title": "Season Number"
+          },
+          "episode_number": {
+            "type": "integer",
+            "title": "Episode Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "episode_id",
+          "season_number",
+          "episode_number",
+          "title",
+          "duration_seconds"
+        ],
+        "title": "NextEpisode"
       },
       "ProblemDetail": {
         "properties": {
@@ -1766,7 +2244,7 @@
     },
     {
       "name": "auth",
-      "description": "Registration, login and token rotation."
+      "description": "Registration, login, token rotation and extension sign-in."
     },
     {
       "name": "users",
@@ -1778,7 +2256,7 @@
     },
     {
       "name": "catalog",
-      "description": "Shows, seasons and episodes."
+      "description": "Shows, seasons, episodes and streaming-site matching."
     },
     {
       "name": "watch_history",

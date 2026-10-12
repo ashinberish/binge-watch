@@ -21,10 +21,10 @@ logger = get_logger(__name__)
 
 OPENAPI_TAGS = [
     {"name": "health", "description": "Liveness and readiness probes."},
-    {"name": "auth", "description": "Registration, login and token rotation."},
+    {"name": "auth", "description": "Registration, login, token rotation and extension sign-in."},
     {"name": "users", "description": "The authenticated account."},
     {"name": "profiles", "description": "Viewer profiles under an account."},
-    {"name": "catalog", "description": "Shows, seasons and episodes."},
+    {"name": "catalog", "description": "Shows, seasons, episodes and streaming-site matching."},
     {"name": "watch_history", "description": "Playback progress and continue-watching."},
     {"name": "streaks", "description": "Binge streaks."},
 ]

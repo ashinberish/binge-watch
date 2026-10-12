@@ -124,6 +124,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/extension-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Extension Code
+         * @description Issue a one-time code for the Chrome extension sign-in handoff.
+         *
+         *     The signed-in web app calls this, then redirects to `redirect_uri` with the code; the
+         *     extension redeems it at `POST /auth/extension-token`. Codes expire after 60 seconds.
+         */
+        post: operations["auth_create_extension_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/extension-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange Extension Code
+         * @description Redeem a one-time extension code (single use, bound to its redirect URI) for tokens.
+         */
+        post: operations["auth_exchange_extension_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me": {
         parameters: {
             query?: never;
@@ -228,6 +271,53 @@ export interface paths {
          * @description Show detail including seasons and episodes.
          */
         get: operations["catalog_get_show"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match Episode
+         * @description Resolve what is playing on a streaming site to a catalog episode.
+         *
+         *     Lookup order: a previous match for `(provider, external_id)`; then the show by
+         *     case-insensitive exact title plus season/episode numbers. Anything still missing
+         *     (show, season, episode) is created on first sight, so every supported player works
+         *     before metadata enrichment. Always returns 200 with the matched episode.
+         */
+        post: operations["catalog_match"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/episodes/{episode_id}/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Next Episode
+         * @description The episode after this one: next in the season, else the first of the next season.
+         *
+         *     404 if the episode doesn't exist or is the last one of its show.
+         */
+        get: operations["catalog_get_next_episode"];
         put?: never;
         post?: never;
         delete?: never;
@@ -346,6 +436,38 @@ export interface components {
             /** Duration Seconds */
             duration_seconds: number;
         };
+        /** ExtensionCode */
+        ExtensionCode: {
+            /**
+             * Code
+             * @description Single-use code to pass to `POST /auth/extension-token`.
+             */
+            code: string;
+            /**
+             * Expires In
+             * @description Code lifetime in seconds.
+             */
+            expires_in: number;
+        };
+        /** ExtensionCodeRequest */
+        ExtensionCodeRequest: {
+            /**
+             * Redirect Uri
+             * @description The extension's `chrome.identity.getRedirectURL()` (`https://<extension-id>.chromiumapp.org/...`).
+             * @example https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/callback
+             */
+            redirect_uri: string;
+        };
+        /** ExtensionTokenRequest */
+        ExtensionTokenRequest: {
+            /** Code */
+            code: string;
+            /**
+             * Redirect Uri
+             * @description Must equal the `redirect_uri` the code was issued for.
+             */
+            redirect_uri: string;
+        };
         /** HealthStatus */
         HealthStatus: {
             /**
@@ -364,6 +486,74 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MatchRequest
+         * @description What a content script sees on a streaming site's player page.
+         */
+        MatchRequest: {
+            /**
+             * Provider
+             * @description Streaming site key, e.g. `netflix`.
+             */
+            provider: string;
+            /**
+             * External Id
+             * @description The provider's own id for this episode.
+             */
+            external_id: string;
+            /** Show Title */
+            show_title: string;
+            /** Episode Title */
+            episode_title?: string | null;
+            /** Season */
+            season?: number | null;
+            /** Episode */
+            episode?: number | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+        };
+        /** MatchResult */
+        MatchResult: {
+            /**
+             * Episode Id
+             * Format: uuid
+             */
+            episode_id: string;
+            /**
+             * Show Id
+             * Format: uuid
+             */
+            show_id: string;
+            /** Show Title */
+            show_title: string;
+            /** Poster Url */
+            poster_url: string | null;
+            /** Season Number */
+            season_number: number;
+            /** Episode Number */
+            episode_number: number;
+            /** Episode Title */
+            episode_title: string;
+            /** Duration Seconds */
+            duration_seconds: number;
+            next_episode: components["schemas"]["NextEpisode"] | null;
+        };
+        /** NextEpisode */
+        NextEpisode: {
+            /**
+             * Episode Id
+             * Format: uuid
+             */
+            episode_id: string;
+            /** Season Number */
+            season_number: number;
+            /** Episode Number */
+            episode_number: number;
+            /** Title */
+            title: string;
+            /** Duration Seconds */
+            duration_seconds: number;
         };
         /**
          * ProblemDetail
@@ -862,6 +1052,90 @@ export interface operations {
             };
         };
     };
+    auth_create_extension_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionCode"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblemDetail"];
+                };
+            };
+        };
+    };
+    auth_exchange_extension_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblemDetail"];
+                };
+            };
+        };
+    };
     users_get_me: {
         parameters: {
             query?: never;
@@ -1176,6 +1450,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShowDetail"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblemDetail"];
+                };
+            };
+        };
+    };
+    catalog_match: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchResult"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblemDetail"];
+                };
+            };
+        };
+    };
+    catalog_get_next_episode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                episode_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextEpisode"];
                 };
             };
             /** @description Missing or invalid credentials */

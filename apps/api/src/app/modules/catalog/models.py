@@ -53,3 +53,16 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     duration_seconds: Mapped[int]
 
     season: Mapped[Season] = relationship(back_populates="episodes", lazy="raise")
+
+
+class EpisodeExternalId(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Maps a streaming provider's own episode id (e.g. a Netflix watch id) to our episode."""
+
+    __tablename__ = "episode_external_ids"
+    __table_args__ = (UniqueConstraint("provider", "external_id"),)
+
+    provider: Mapped[str] = mapped_column(String(32))
+    external_id: Mapped[str] = mapped_column(String(255))
+    episode_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("episodes.id", ondelete="CASCADE"), index=True
+    )

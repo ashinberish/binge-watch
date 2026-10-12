@@ -1,3 +1,6 @@
+import secrets
+import uuid
+from datetime import timedelta
 from functools import cache
 from typing import Annotated
 
@@ -18,13 +21,27 @@ from app.core.security import (
     verify_password,
 )
 from app.core.time import utcnow
-from app.modules.auth.models import RefreshToken
-from app.modules.auth.repository import RefreshTokenRepository, RefreshTokenRepositoryDep
-from app.modules.auth.schemas import LoginRequest, RegisterRequest, TokenPair
+from app.modules.auth import schemas
+from app.modules.auth.models import ExtensionCode, RefreshToken
+from app.modules.auth.repository import (
+    ExtensionCodeRepository,
+    ExtensionCodeRepositoryDep,
+    RefreshTokenRepository,
+    RefreshTokenRepositoryDep,
+)
+from app.modules.auth.schemas import (
+    ExtensionTokenRequest,
+    LoginRequest,
+    RegisterRequest,
+    TokenPair,
+)
 from app.modules.users.models import User
 from app.modules.users.repository import UserRepository, UserRepositoryDep
 
 logger = get_logger(__name__)
+
+EXTENSION_CODE_BYTES = 32
+EXTENSION_CODE_RETENTION = timedelta(days=1)
 
 
 @cache
@@ -35,10 +52,15 @@ def _dummy_hash() -> str:
 
 class AuthService:
     def __init__(
-        self, users: UserRepository, tokens: RefreshTokenRepository, settings: Settings
+        self,
+        users: UserRepository,
+        tokens: RefreshTokenRepository,
+        codes: ExtensionCodeRepository,
+        settings: Settings,
     ) -> None:
         self.users = users
         self.tokens = tokens
+        self.codes = codes
         self.settings = settings
 
     async def register(self, data: RegisterRequest) -> User:
@@ -103,6 +125,50 @@ class AuthService:
             record.revoked_at = utcnow()
             await self.tokens.commit()
 
+    async def create_extension_code(
+        self, user_id: uuid.UUID, redirect_uri: str
+    ) -> schemas.ExtensionCode:
+        """Issue a single-use code the web app hands to the extension via its redirect URI."""
+        code = secrets.token_urlsafe(EXTENSION_CODE_BYTES)
+        ttl = self.settings.extension_code_ttl_seconds
+        self.codes.add(
+            ExtensionCode(
+                user_id=user_id,
+                code_hash=hash_token(code),
+                redirect_uri=redirect_uri,
+                expires_at=utcnow() + timedelta(seconds=ttl),
+            )
+        )
+        await self.codes.commit()
+        logger.info("auth.extension_code_issued", user_id=str(user_id))
+        return schemas.ExtensionCode(code=code, expires_in=ttl)
+
+    async def exchange_extension_code(self, data: ExtensionTokenRequest) -> TokenPair:
+        """Redeem an extension code for a token pair. Every failure looks the same (401)."""
+        record = await self.codes.get_by_hash(hash_token(data.code))
+        now = utcnow()
+        if (
+            record is None
+            or record.is_used
+            or record.expires_at <= now
+            or not secrets.compare_digest(record.redirect_uri, data.redirect_uri)
+        ):
+            raise UnauthorizedError("Invalid or expired extension code.")
+        if not await self.codes.claim(record.id, now):
+            raise UnauthorizedError("Invalid or expired extension code.")
+
+        user = await self.users.get(record.user_id)
+        if user is None or not user.is_active:
+            raise UnauthorizedError("Invalid or expired extension code.")
+        logger.info("auth.extension_code_redeemed", user_id=str(user.id))
+        return await self._issue_tokens(user)
+
+    async def purge_extension_codes(self) -> int:
+        """Delete extension codes issued more than a day ago (expired or used)."""
+        deleted = await self.codes.purge_created_before(utcnow() - EXTENSION_CODE_RETENTION)
+        await self.codes.commit()
+        return deleted
+
     async def _issue_tokens(self, user: User) -> TokenPair:
         access = create_access_token(user.id, self.settings)
         refresh = create_refresh_token(user.id, self.settings)
@@ -122,9 +188,12 @@ class AuthService:
 
 
 def get_auth_service(
-    users: UserRepositoryDep, tokens: RefreshTokenRepositoryDep, settings: SettingsDep
+    users: UserRepositoryDep,
+    tokens: RefreshTokenRepositoryDep,
+    codes: ExtensionCodeRepositoryDep,
+    settings: SettingsDep,
 ) -> AuthService:
-    return AuthService(users, tokens, settings)
+    return AuthService(users, tokens, codes, settings)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
