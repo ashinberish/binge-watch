@@ -11,7 +11,7 @@ interface Props {
 /** Pick who is watching. Each profile is a toggle button; the active one is pressed. */
 export function ProfileSwitcher({ profiles, activeProfileId, onSelect }: Props) {
   return (
-    <section className="nr-popup__section" aria-labelledby="profiles-title">
+    <section className="nr-panel__section" aria-labelledby="profiles-title">
       <h2 id="profiles-title" className="nr-visually-hidden">
         Who is watching
       </h2>
@@ -36,7 +36,7 @@ export function ProfileSwitcher({ profiles, activeProfileId, onSelect }: Props) 
 
 export function NoProfiles({ webUrl }: { webUrl: string }) {
   return (
-    <p className="nr-popup__muted">
+    <p className="nr-panel__muted">
       You have no profiles yet.{' '}
       <a href={`${webUrl}/profiles`} target="_blank" rel="noreferrer">
         Create one on Nightreel

@@ -50,7 +50,7 @@ export function SettingsForm() {
             ) : (
               <Skeleton shape="rect" height={40} />
             )}
-            <p role="status" className="nr-popup__muted">
+            <p role="status" className="nr-panel__muted">
               {status === 'saved' ? 'Saved.' : null}
               {status === 'error' ? 'Could not save your settings. Try again.' : null}
             </p>
@@ -68,7 +68,7 @@ export function SettingsForm() {
             {adapters.map((adapter) => (
               <li key={adapter.id} className="nr-sites__item">
                 <span>{adapter.name}</span>
-                <span className="nr-popup__muted">{adapter.site}</span>
+                <span className="nr-panel__muted">{adapter.site}</span>
               </li>
             ))}
           </ul>

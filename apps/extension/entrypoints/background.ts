@@ -8,6 +8,9 @@ const SYNC_ALARM = 'nightreel:sync'
 export default defineBackground(() => {
   const handle = createHandler(services, chrome.runtime.getURL(''))
 
+  // There is no popup: the toolbar button opens the side panel, which holds the whole UI.
+  void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined)
+
   void chrome.alarms.get(SYNC_ALARM).then((alarm) => {
     if (!alarm) void chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 1 })
   })

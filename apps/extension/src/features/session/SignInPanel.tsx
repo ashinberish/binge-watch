@@ -27,16 +27,16 @@ export function SignInPanel({ onSignedIn }: Props) {
   }
 
   return (
-    <section className="nr-popup__signin" aria-labelledby="signin-title">
-      <h1 id="signin-title" className="nr-popup__title">
+    <section className="nr-panel__signin" aria-labelledby="signin-title">
+      <h1 id="signin-title" className="nr-panel__title">
         Connect your account
       </h1>
-      <p className="nr-popup__muted">
+      <p className="nr-panel__muted">
         Sign in to save your progress as you watch, pick up where you left off and get a countdown
         to the next episode.
       </p>
       {error ? (
-        <p className="nr-popup__error" role="alert">
+        <p className="nr-panel__error" role="alert">
           {error}
         </p>
       ) : null}

@@ -10,7 +10,7 @@ interface Props {
 /** Every season's episodes, with the one playing in the tab marked as current. */
 export function EpisodeList({ show, currentEpisodeId }: Props) {
   return (
-    <div className="nr-popup__section">
+    <div className="nr-panel__section">
       {show.seasons.map((season) => (
         <section key={season.id} aria-labelledby={`season-${season.id}`} className="nr-season">
           <h2 id={`season-${season.id}`} className="nr-season__title">

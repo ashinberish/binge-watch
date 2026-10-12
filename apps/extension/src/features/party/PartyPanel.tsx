@@ -6,11 +6,6 @@ import { onBroadcast, send, type PartyTabView } from '../../messaging/protocol'
 import { useAsync } from '../../messaging/useAsync'
 import { membersLabel } from './overlay'
 
-async function activeTabId(): Promise<number | null> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  return tab?.id ?? null
-}
-
 async function copy(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text)
@@ -24,18 +19,17 @@ async function copy(text: string): Promise<boolean> {
  * Watch party controls for the active tab: "Start a watch party" on a matched player,
  * or the party's invite link and Leave once in one.
  */
-export function PartyPanel() {
-  const [tabId, setTabId] = useState<number | null>(null)
+export function PartyPanel({ tabId }: { tabId: number | null }) {
   const [version, setVersion] = useState(0)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null)
-  const tabRef = useRef<number | null>(null)
+  const tabRef = useRef(tabId)
 
   useEffect(() => {
-    void activeTabId().then((id) => {
-      tabRef.current = id
-      setTabId(id)
-    })
+    tabRef.current = tabId
+  }, [tabId])
+
+  useEffect(() => {
     return onBroadcast((message) => {
       if (message.type === 'session:changed') setVersion((v) => v + 1)
       if (
@@ -107,18 +101,18 @@ export function PartyPanel() {
   }
 
   const status = note ? (
-    <p className={note.error ? 'nr-popup__error' : 'nr-popup__muted'} role="status">
+    <p className={note.error ? 'nr-panel__error' : 'nr-panel__muted'} role="status">
       {note.text}
     </p>
   ) : null
 
   if (party) {
     return (
-      <section className="nr-popup__section nr-party" aria-labelledby="party-title">
+      <section className="nr-panel__section nr-party" aria-labelledby="party-title">
         <p id="party-title" className="nr-party__title">
           {membersLabel(party.memberCount)}
         </p>
-        {party.status === 'reconnecting' ? <p className="nr-popup__muted">Reconnecting…</p> : null}
+        {party.status === 'reconnecting' ? <p className="nr-panel__muted">Reconnecting…</p> : null}
         <label className="nr-party__label" htmlFor="party-link">
           Invite link
         </label>
@@ -145,7 +139,7 @@ export function PartyPanel() {
 
   if (!canStart) return status
   return (
-    <section className="nr-popup__section nr-party" aria-label="Watch party">
+    <section className="nr-panel__section nr-party" aria-label="Watch party">
       <div className="nr-party__actions">
         <Button size="sm" variant="secondary" loading={busy} onClick={() => void start()}>
           Start a watch party

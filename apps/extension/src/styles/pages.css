@@ -1,5 +1,5 @@
 /* Shared by the popup, options page and side panel. Tokens come from @nightreel/ui. */
-.nr-popup {
+.nr-panel {
   display: flex;
   flex-direction: column;
   gap: var(--nr-space-4);
@@ -9,11 +9,11 @@
   font: var(--nr-type-body-sm);
 }
 
-.nr-popup p {
+.nr-panel p {
   margin: 0;
 }
 
-.nr-popup__header {
+.nr-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -29,38 +29,38 @@
   color: var(--nr-color-brand-text);
 }
 
-.nr-popup__title {
+.nr-panel__title {
   margin: 0;
   font: var(--nr-type-title-2);
 }
 
-.nr-popup__section {
+.nr-panel__section {
   display: flex;
   flex-direction: column;
   gap: var(--nr-space-3);
 }
 
-.nr-popup__muted,
-.nr-popup__empty {
+.nr-panel__muted,
+.nr-panel__empty {
   color: var(--nr-color-ink-muted);
 }
 
-.nr-popup__error {
+.nr-panel__error {
   color: var(--nr-color-danger);
 }
 
-.nr-popup__signin {
+.nr-panel__signin {
   display: flex;
   flex-direction: column;
   gap: var(--nr-space-3);
   align-items: flex-start;
 }
 
-.nr-popup__streak {
+.nr-panel__streak {
   color: var(--nr-color-accent);
 }
 
-.nr-popup__footer {
+.nr-panel__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -68,7 +68,7 @@
   border-top: 1px solid var(--nr-color-border);
 }
 
-.nr-popup a {
+.nr-panel a {
   color: var(--nr-color-brand-text);
 }
 

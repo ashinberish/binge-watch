@@ -30,7 +30,7 @@ export function ContinueWatchingList({ state }: Props) {
   }
   if (state.status === 'error' || !state.data.ok) {
     const message = failureMessage(state.data?.ok === false ? state.data.error : 'rejected')
-    return <p className="nr-popup__error">{message}</p>
+    return <p className="nr-panel__error">{message}</p>
   }
   if (state.data.data.length === 0) return <EmptyState />
 

@@ -82,7 +82,7 @@ export interface PartyRoomProps {
 
 function MemberList({ members, youId }: { members: RoomMember[]; youId: string | null }) {
   if (members.length === 0) {
-    return <p className="nr-popup__muted">Waiting for the party to connect…</p>
+    return <p className="nr-panel__muted">Waiting for the party to connect…</p>
   }
   return (
     <ul className="nr-members" aria-label="People in the party">
@@ -156,7 +156,7 @@ function ChatLog({
         onScroll={onScroll}
       >
         {messages.length === 0 ? (
-          <p className="nr-popup__muted">No messages yet. Say hi to the party.</p>
+          <p className="nr-panel__muted">No messages yet. Say hi to the party.</p>
         ) : (
           <ol className="nr-chat__list">
             {messages.map((message) => {
@@ -283,7 +283,7 @@ function Composer({
       {input.counterText ? (
         <p
           id={`${id}-counter`}
-          className={input.tooLong ? 'nr-composer__note nr-popup__error' : 'nr-composer__note'}
+          className={input.tooLong ? 'nr-composer__note nr-panel__error' : 'nr-composer__note'}
           aria-live="polite"
         >
           {input.counterText}
@@ -295,7 +295,7 @@ function Composer({
         </p>
       ) : null}
       {shownError ? (
-        <p id={`${id}-error`} className="nr-composer__note nr-popup__error" role="alert">
+        <p id={`${id}-error`} className="nr-composer__note nr-panel__error" role="alert">
           {shownError}
         </p>
       ) : null}
@@ -350,13 +350,13 @@ export function PartyRoom({
 
   return (
     <div className="nr-room">
-      <section className="nr-popup__section" aria-labelledby="room-members">
+      <section className="nr-panel__section" aria-labelledby="room-members">
         <h2 id="room-members" className="nr-season__title">
           In the party
         </h2>
         <MemberList members={members} youId={youId} />
       </section>
-      <section className="nr-popup__section nr-room__chat" aria-labelledby="room-chat">
+      <section className="nr-panel__section nr-room__chat" aria-labelledby="room-chat">
         <h2 id="room-chat" className="nr-season__title">
           Chat
         </h2>

@@ -71,7 +71,7 @@ On macOS and Linux, `make setup`, `make dev`, `make check` and so on are shortcu
 0. Foundation: monorepo, tooling, CI, local infra
 1. Backend core: auth, users, profiles, catalog, history, streaks
 2. Web app: sign in, profile picker, watch history, settings
-3. Chrome extension: popup sign-in, player adapters, progress sync, countdown overlay
+3. Chrome extension: side panel (sign-in, continue watching, party, episodes), player adapters, progress sync, countdown overlay
 4. Hardening: tracing, rate limits, Helm/Terraform, Web Store release pipeline
 5. Pricing and billing (last)
 
