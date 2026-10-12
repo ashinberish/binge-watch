@@ -16,6 +16,7 @@ from app.core.security import configure_password_hasher
 from app.core.telemetry import setup_telemetry
 from app.db.session import create_engine, create_sessionmaker
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIDMiddleware
+from app.modules.parties.hub import create_party_hub
 
 logger = get_logger(__name__)
 
@@ -27,6 +28,11 @@ OPENAPI_TAGS = [
     {"name": "catalog", "description": "Shows, seasons, episodes and streaming-site matching."},
     {"name": "watch_history", "description": "Playback progress and continue-watching."},
     {"name": "streaks", "description": "Binge streaks."},
+    {
+        "name": "parties",
+        "description": "Watch parties: synced playback for several viewers via an invite link. "
+        "Realtime sync uses the WebSocket `GET /api/v1/parties/{code}/ws` (see README).",
+    },
 ]
 
 
@@ -40,11 +46,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     engine = create_engine(settings)
+    # App-lifetime realtime hub. Construction is lazy (no I/O), so apps used without the
+    # lifespan (tests on ASGITransport) still work; shutdown closes open party sockets.
+    party_hub = create_party_hub(settings)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.info("app.startup", environment=settings.environment)
         yield
+        await party_hub.close()
         await engine.dispose()
         logger.info("app.shutdown")
 
@@ -60,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
+    app.state.party_hub = party_hub
 
     # Order: last added = outermost. Request ID wraps everything (including CORS).
     app.add_middleware(

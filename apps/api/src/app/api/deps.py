@@ -6,14 +6,32 @@ from typing import Annotated
 from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.config import SettingsDep
+from app.core.config import Settings, SettingsDep
 from app.core.exceptions import UnauthorizedError
 from app.core.security import InvalidTokenError, decode_token
 from app.db.session import DbSession
 from app.modules.users.models import User
-from app.modules.users.repository import UserRepositoryDep
+from app.modules.users.repository import UserRepository, UserRepositoryDep
 
 __all__ = ["CurrentUser", "DbSession", "Pagination", "PaginationDep", "SettingsDep"]
+
+
+async def user_from_access_token(
+    token: str, users: UserRepository, settings: Settings
+) -> User | None:
+    """The active user an access JWT belongs to, or None if the token or user is invalid.
+
+    Shared by bearer auth and the watch-party WebSocket (which authenticates in-band).
+    """
+    try:
+        claims = decode_token(token, "access", settings)
+    except InvalidTokenError:
+        return None
+    user = await users.get(claims.subject)
+    if user is None or not user.is_active:
+        return None
+    return user
+
 
 _bearer = HTTPBearer(auto_error=False, description="Access token from `POST /auth/login`.")
 
@@ -25,12 +43,8 @@ async def get_current_user(
 ) -> User:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise UnauthorizedError("Missing bearer token.")
-    try:
-        claims = decode_token(credentials.credentials, "access", settings)
-    except InvalidTokenError as exc:
-        raise UnauthorizedError("Invalid or expired access token.") from exc
-    user = await users.get(claims.subject)
-    if user is None or not user.is_active:
+    user = await user_from_access_token(credentials.credentials, users, settings)
+    if user is None:
         raise UnauthorizedError("Invalid or expired access token.")
     return user
 

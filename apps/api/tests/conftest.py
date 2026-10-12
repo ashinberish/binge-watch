@@ -33,6 +33,9 @@ def settings(tmp_path: Path) -> Settings:
         log_json=False,
         log_level="WARNING",
         cors_origins=["http://localhost:5173"],
+        cors_origin_regex="chrome-extension://[a-p]{32}",
+        web_url="http://localhost:5173",
+        party_hub="memory",
     )
 
 

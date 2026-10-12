@@ -54,6 +54,7 @@ uv run python -m app.scripts.export_openapi ../../packages/api-client/openapi.js
 | catalog | `GET /catalog/shows`, `/catalog/shows/{id}`, `/catalog/episodes/{id}/next`, `POST /catalog/match` |
 | watch_history | `PUT /history/{episode_id}/progress`, `GET /history/continue-watching` |
 | streaks | `GET /streaks/current` |
+| parties | `POST /parties`, `GET /parties/{code}`, `POST /parties/{code}/join`, `/parties/{code}/leave`, WebSocket `/parties/{code}/ws` |
 
 Every route has an explicit `operationId` (`<module>_<action>`), so regenerated client
 method names stay stable. Error responses are documented as `application/problem+json`.
@@ -70,7 +71,7 @@ src/app/
   api/                 deps (DbSession, CurrentUser, Pagination), health probes, v1 router
   middleware/          X-Request-ID correlation + access log
   modules/<domain>/    router.py → service.py → repository.py → models.py, schemas.py
-    auth users profiles catalog watch_history streaks billing
+    auth users profiles catalog watch_history streaks parties billing
   integrations/        tmdb.py (client interface, not wired yet)
   workers/             Celery app + tasks
   scripts/             export_openapi, seed
@@ -112,10 +113,77 @@ tests/                 unit/ and integration/
 - **Billing**: `modules/billing/entitlements.require_feature()` is a no-op gate today;
   pricing arrives in the final phase.
 
+## Watch parties
+
+Synced playback for several viewers. First version: play/pause/seek sync and a member count
+(no chat, reactions or presence list). **Everyone** in the room can control playback; the
+server orders controls and the last one wins.
+
+### HTTP (`/api/v1`, bearer auth)
+
+| Endpoint | |
+| --- | --- |
+| `POST /parties` → 201 `PartyRead` | Body `{provider, watch_url, episode_id?}`. `provider` matches `^[a-z0-9-]{1,32}$`; `watch_url` must be `https://` with a host in `APP_PARTY_ALLOWED_HOSTS` (default `www.youtube.com`), else 422. The creator hosts and is the first member. |
+| `GET /parties/{code}` → `PartyRead` | Any signed-in user with the code. 404 if unknown, ended or expired. |
+| `POST /parties/{code}/join` → `PartyRead` | Idempotent. 404 unknown/ended/expired, 409 when `APP_PARTY_MAX_MEMBERS` (20) is reached. |
+| `POST /parties/{code}/leave` → 204 | Idempotent. When the last member leaves (host or not), the party ends and sockets get `ended`. |
+
+`PartyRead = {id, code, invite_url, provider, watch_url, episode_id, host: {id, display_name},
+member_count, expires_at, created_at}`; `invite_url` is `{APP_WEB_URL}/party/{code}`. Codes are
+10 characters from `23456789abcdefghjkmnpqrstuvwxyz` (lookups are case-insensitive). Parties
+expire `APP_PARTY_TTL_HOURS` (12) after creation; the Celery task
+`nightreel.end_expired_parties` (beat: every 5 min) marks them ended in the database.
+
+### WebSocket `GET /api/v1/parties/{code}/ws`
+
+JSON text frames. No `Authorization` header (browsers and extension service workers can't
+set one): authentication is the first message.
+
+1. **Origin**: if an `Origin` header is present it must be in `APP_CORS_ORIGINS` or match
+   `APP_CORS_ORIGIN_REGEX` (the Chrome extension); otherwise close `4403`. No Origin is allowed.
+2. **Auth**: within 5 s send `{"type":"auth","access_token":"<access JWT>"}`. Missing,
+   invalid, expired, non-auth first message or timeout → close `4401`.
+3. Party unknown, ended or expired → close `4404`. Caller is not a member (call
+   `POST /parties/{code}/join` first) → close `4403`.
+4. Server sends
+   `{"type":"welcome","state":PlaybackState,"members":int,"you":{"id","display_name"}}`.
+
+`PlaybackState = {"paused":bool, "position":float, "rate":float, "updated_at":float,
+"seq":int, "by":{"id","display_name"}|null}` — `position` in seconds at `updated_at` (server
+epoch seconds). A fresh room is `{"paused":true,"position":0,"rate":1,"updated_at":0,"seq":0,"by":null}`.
+
+Expected position at server time `now`: `position + (paused ? 0 : (now - updated_at) * rate)`.
+
+| Client → server | Server behaviour |
+| --- | --- |
+| `{"type":"control","action":"play"\|"pause"\|"seek","position":float≥0,"rate"?:0.25–4}` | `play` → `paused=false`, `pause` → `paused=true`, `seek` keeps `paused`. `position` from the message, `rate` from the message or unchanged, `updated_at` = server now, `seq` + 1, `by` = sender. Broadcasts `{"type":"state","state":PlaybackState}` to **all** sockets, sender included (use `seq` to drop your own echo / stale states). Max 10 controls/s per socket (burst 10); excess silently dropped. |
+| `{"type":"ping"}` (every ~20 s) | `{"type":"pong","server_time":float}` — use for clock offset. |
+| anything malformed (bad JSON, unknown type, invalid fields, binary frame, > 8 KiB, a second `auth`) | `{"type":"error","detail":"..."}`; the socket stays open. |
+
+| Server → client | |
+| --- | --- |
+| `{"type":"members","count":int}` | Distinct users currently connected (a user's second tab doesn't count twice), sent on every connect/disconnect. |
+| `{"type":"ended"}` then close `4410` | The party ended (last member left) or reached `expires_at`. |
+
+Other close codes: `4408` no message for 60 s (keep pinging), `1012` server shutting down
+(reconnect), `1011` internal error.
+
+**Scale-out.** The handler only talks to a `PartyHub` (`modules/parties/hub.py`).
+`RedisPartyHub` (`APP_PARTY_HUB=redis`, default) keeps state and connected-member counts in
+Redis hashes (`nightreel:party:{code}:state|members`, TTL = party TTL) and mutates them with
+Lua scripts that also `PUBLISH` the resulting event on `nightreel:party:{code}:events`, so
+`seq` order equals broadcast order across processes; each API process uses one pub/sub
+connection and fans out locally. `InMemoryPartyHub` (`APP_PARTY_HUB=memory`) is for tests and
+single-process dev. The hub is created in `create_app` and closed in the lifespan, which
+closes open party sockets with `1012`. Hub tests run against memory and `fakeredis`; set
+`APP_TEST_REDIS_URL=redis://localhost:6379/15` to also run them against a real Redis
+(the test flushes that DB).
+
 ## Background worker
 
 ```bash
 uv run celery -A app.workers.celery_app worker -l info
+uv run celery -A app.workers.celery_app beat -l info    # schedules nightreel.end_expired_parties
 ```
 
 ## Configuration

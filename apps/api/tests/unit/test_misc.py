@@ -33,6 +33,10 @@ EXPECTED_OPERATION_IDS = {
     "history_update_progress",
     "history_continue_watching",
     "streaks_get_current",
+    "parties_create",
+    "parties_get",
+    "parties_join",
+    "parties_leave",
 }
 
 

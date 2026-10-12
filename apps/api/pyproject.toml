@@ -30,6 +30,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "celery-types>=0.22",
+    "fakeredis[lua]>=2.26",
 ]
 
 [build-system]
@@ -85,7 +86,11 @@ asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra --strict-markers --cov=app --cov-report=term-missing:skip-covered"
-filterwarnings = ["error::DeprecationWarning:app.*"]
+filterwarnings = [
+    "error::DeprecationWarning:app.*",
+    # Starlette's TestClient (WebSocket tests) nudges towards httpx2; httpx is what we ship.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
 
 [tool.coverage.run]
 branch = true

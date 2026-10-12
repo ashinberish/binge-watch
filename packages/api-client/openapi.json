@@ -1237,6 +1237,270 @@
           }
         }
       }
+    },
+    "/api/v1/parties": {
+      "post": {
+        "tags": [
+          "parties"
+        ],
+        "summary": "Create Party",
+        "description": "Start a watch party for a video. The caller hosts it and is its first member.\n\nShare `invite_url`; friends open it, sign in and call `POST /parties/{code}/join`.\nParties expire after `APP_PARTY_TTL_HOURS` (default 12).",
+        "operationId": "parties_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/parties/{code}": {
+      "get": {
+        "tags": [
+          "parties"
+        ],
+        "summary": "Get Party",
+        "description": "Look up a party by invite code (any signed-in user who has the code).\n\n404 if the code is unknown or the party has ended or expired.",
+        "operationId": "parties_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parties/{code}/join": {
+      "post": {
+        "tags": [
+          "parties"
+        ],
+        "summary": "Join Party",
+        "description": "Join a party (idempotent). Required before opening the party WebSocket.\n\n404 if unknown, ended or expired; 409 when the party is full.",
+        "operationId": "parties_join",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parties/{code}/leave": {
+      "post": {
+        "tags": [
+          "parties"
+        ],
+        "summary": "Leave Party",
+        "description": "Leave a party (idempotent). When the last member leaves, the party ends and open\nWebSockets receive `{\"type\": \"ended\"}`.",
+        "operationId": "parties_leave",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1613,6 +1877,137 @@
           "duration_seconds"
         ],
         "title": "NextEpisode"
+      },
+      "PartyCreate": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,32}$",
+            "title": "Provider",
+            "description": "Streaming provider slug, e.g. `youtube`.",
+            "examples": [
+              "youtube"
+            ]
+          },
+          "watch_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Watch Url",
+            "description": "HTTPS URL of the video. Its host must be on the server's allow-list (`APP_PARTY_ALLOWED_HOSTS`, default `www.youtube.com`).",
+            "examples": [
+              "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            ]
+          },
+          "episode_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Id",
+            "description": "Catalog episode being watched, if known."
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "watch_url"
+        ],
+        "title": "PartyCreate"
+      },
+      "PartyRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Invite code (10 characters)."
+          },
+          "invite_url": {
+            "type": "string",
+            "title": "Invite Url",
+            "description": "Web link friends open to join: `{web_url}/party/{code}`."
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "watch_url": {
+            "type": "string",
+            "title": "Watch Url"
+          },
+          "episode_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Id"
+          },
+          "host": {
+            "$ref": "#/components/schemas/PartyUser"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count",
+            "description": "Viewers who have joined (and not left)."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "invite_url",
+          "provider",
+          "watch_url",
+          "episode_id",
+          "host",
+          "member_count",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "PartyRead"
+      },
+      "PartyUser": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "PartyUser"
       },
       "ProblemDetail": {
         "properties": {
@@ -2265,6 +2660,10 @@
     {
       "name": "streaks",
       "description": "Binge streaks."
+    },
+    {
+      "name": "parties",
+      "description": "Watch parties: synced playback for several viewers via an invite link. Realtime sync uses the WebSocket `GET /api/v1/parties/{code}/ws` (see README)."
     }
   ]
 }

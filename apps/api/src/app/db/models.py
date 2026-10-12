@@ -3,6 +3,7 @@
 from app.db.base import Base
 from app.modules.auth.models import ExtensionCode, RefreshToken
 from app.modules.catalog.models import Episode, EpisodeExternalId, Season, Show
+from app.modules.parties.models import Party, PartyMember
 from app.modules.profiles.models import Profile
 from app.modules.streaks.models import Streak
 from app.modules.users.models import User
@@ -13,6 +14,8 @@ __all__ = [
     "Episode",
     "EpisodeExternalId",
     "ExtensionCode",
+    "Party",
+    "PartyMember",
     "Profile",
     "RefreshToken",
     "Season",

@@ -22,3 +22,9 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     broker_connection_retry_on_startup=True,
 )
+celery_app.conf.beat_schedule = {
+    "end-expired-parties": {
+        "task": "nightreel.end_expired_parties",
+        "schedule": 300.0,
+    },
+}

@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 DEFAULT_JWT_SECRET = "dev-insecure-change-me-0123456789abcdef"  # noqa: S105 - placeholder, rejected in production
 
 Environment = Literal["local", "test", "staging", "production"]
+PartyHubBackend = Literal["redis", "memory"]
 
 
 class Settings(BaseSettings):
@@ -59,7 +60,16 @@ class Settings(BaseSettings):
     tmdb_api_key: SecretStr | None = None
     tmdb_base_url: str = "https://api.themoviedb.org/3"
 
-    @field_validator("cors_origins", mode="before")
+    # Public URL of the web app (invite links point here).
+    web_url: str = "http://localhost:5173"
+
+    # Watch parties
+    party_hub: PartyHubBackend = "redis"
+    party_ttl_hours: float = Field(default=12, gt=0)
+    party_allowed_hosts: Annotated[list[str], NoDecode] = ["www.youtube.com"]
+    party_max_members: int = Field(default=20, ge=1)
+
+    @field_validator("cors_origins", "party_allowed_hosts", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
         """Accept a comma-separated string (``a,b``) or a JSON-style list."""
@@ -88,6 +98,10 @@ class Settings(BaseSettings):
     @property
     def result_backend(self) -> str:
         return self.celery_result_backend or self.redis_url
+
+    @property
+    def party_ttl_seconds(self) -> int:
+        return max(1, int(self.party_ttl_hours * 3600))
 
     @property
     def is_sqlite(self) -> bool:
