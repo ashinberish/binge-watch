@@ -12,7 +12,8 @@ the hub, never to other connections directly.
   for tests and single-process development.
 
 Events delivered to subscribers are exactly the server→client WebSocket messages:
-``state``, ``members``, ``presence``, ``chat``, ``reaction`` and ``ended``.
+``state``, ``video``, ``members``, ``presence``, ``chat``, ``reaction`` and ``ended``.
+A video change publishes ``video`` and then ``state`` (same ``seq``) in one atomic step.
 
 Crash safety: every connection is recorded with the id of the API process holding it, and
 each process keeps a heartbeat key alive (``{prefix}:proc:{proc_id}``, refreshed every
@@ -48,6 +49,7 @@ from app.modules.parties.schemas import (
     ChatMessage,
     ControlAction,
     PartyUser,
+    PartyVideo,
     PlaybackState,
     PresenceMember,
     PresenceStatus,
@@ -65,7 +67,7 @@ PRESENCE_COALESCE_SECONDS = 0.1
 PROC_HEARTBEAT_SECONDS = 15.0
 PROC_TTL_SECONDS = 45
 
-RateKind = Literal["chat", "react"]
+RateKind = Literal["chat", "react", "video"]
 
 
 def members_event(count: int) -> Event:
@@ -74,6 +76,15 @@ def members_event(count: int) -> Event:
 
 def state_event(state: PlaybackState) -> Event:
     return {"type": "state", "state": state.model_dump(mode="json")}
+
+
+def video_event(video: PartyVideo, *, by: PartyUser, seq: int) -> Event:
+    return {
+        "type": "video",
+        "video": video.model_dump(mode="json"),
+        "by": by.model_dump(mode="json"),
+        "seq": seq,
+    }
 
 
 def presence_event(members: list[PresenceMember]) -> Event:
@@ -119,6 +130,13 @@ def next_state(
         updated_at=now,
         seq=current.seq + 1,
         by=by,
+    )
+
+
+def video_reset_state(current: PlaybackState, *, by: PartyUser, now: float) -> PlaybackState:
+    """Playback after switching videos: playing from 0 at normal speed, ``seq`` + 1."""
+    return PlaybackState(
+        paused=False, position=0.0, rate=DEFAULT_RATE, updated_at=now, seq=current.seq + 1, by=by
     )
 
 
@@ -256,6 +274,32 @@ class PartyHub(Protocol):
         """Atomically apply a control (seq + 1) and broadcast the new state."""
         ...
 
+    async def snapshot(self, code: str) -> tuple[PlaybackState, PartyVideo | None]:
+        """Playback state and the video recorded by the last ``change_video`` (None if the
+        video was never changed), read together."""
+        ...
+
+    async def change_video(
+        self, code: str, video: PartyVideo, *, by: PartyUser, now: float
+    ) -> PlaybackState:
+        """Atomically record ``video``, reset playback (playing from 0, rate 1, seq + 1) and
+        broadcast ``video`` followed by ``state``."""
+        ...
+
+    async def allow(
+        self,
+        code: str,
+        kind: RateKind,
+        user_id: uuid.UUID,
+        *,
+        now: float,
+        limit: int,
+        window: float,
+    ) -> bool:
+        """Count one ``kind`` action of ``user_id`` unless they already did ``limit`` in
+        the last ``window`` seconds (then False, nothing is counted)."""
+        ...
+
     async def publish(self, code: str, event: Event) -> None:
         """Broadcast an event to every connection of the party, on every process."""
         ...
@@ -337,6 +381,7 @@ class InMemoryPartyHub:
         self.proc_id = uuid.uuid4().hex
         self._procs: dict[str, float] = {}
         self._states: dict[str, tuple[PlaybackState, float]] = {}
+        self._videos: dict[str, PartyVideo] = {}  # expires with the code's state entry
         self._conns: dict[str, Counter[tuple[uuid.UUID, str]]] = {}
         self._presence: dict[str, dict[uuid.UUID, _Presence]] = {}
         self._joined: dict[str, dict[uuid.UUID, float]] = {}
@@ -349,8 +394,23 @@ class InMemoryPartyHub:
         entry = self._states.get(code)
         if entry is None or entry[1] <= time.monotonic():
             self._states.pop(code, None)
+            self._videos.pop(code, None)
             return PlaybackState()
         return entry[0]
+
+    async def snapshot(self, code: str) -> tuple[PlaybackState, PartyVideo | None]:
+        state = await self.get_state(code)
+        return state, self._videos.get(code)
+
+    async def change_video(
+        self, code: str, video: PartyVideo, *, by: PartyUser, now: float
+    ) -> PlaybackState:
+        state = video_reset_state(await self.get_state(code), by=by, now=now)
+        self._states[code] = (state, time.monotonic() + self._ttl)
+        self._videos[code] = video
+        self._fanout.deliver(code, video_event(video, by=by, seq=state.seq))
+        self._fanout.deliver(code, state_event(state))
+        return state
 
     async def apply_control(
         self,
@@ -487,6 +547,18 @@ class InMemoryPartyHub:
         log.append(now)
         return True
 
+    async def allow(
+        self,
+        code: str,
+        kind: RateKind,
+        user_id: uuid.UUID,
+        *,
+        now: float,
+        limit: int,
+        window: float,
+    ) -> bool:
+        return self._allow(code, kind, user_id, now, limit, window)
+
     async def post_chat(
         self, code: str, message: ChatMessage, *, limit: int, window: float
     ) -> bool:
@@ -517,7 +589,8 @@ class InMemoryPartyHub:
         return True
 
     async def end(self, code: str) -> None:
-        for store in (self._states, self._conns, self._presence, self._joined, self._chat):
+        stores = (self._states, self._videos, self._conns, self._presence, self._joined, self._chat)
+        for store in stores:
             store.pop(code, None)
         for key in [k for k in self._rates if k[0] == code]:
             del self._rates[key]
@@ -543,6 +616,22 @@ redis.call('EXPIRE', KEYS[1], ARGV[6])
 local state = '{"paused":' .. paused .. ',"position":' .. ARGV[2] .. ',"rate":' .. rate
   .. ',"updated_at":' .. ARGV[4] .. ',"seq":' .. seq .. ',"by":' .. ARGV[5] .. '}'
 redis.call('PUBLISH', ARGV[7], '{"type":"state","state":' .. state .. '}')
+return state
+"""
+
+# KEYS[1] = state hash. ARGV: video json, now, by json, ttl, channel, default rate, position.
+# Both events are published by this one script, so every subscriber on every process sees
+# `video` immediately followed by the `state` with the same seq.
+_CHANGE_VIDEO_LUA = """
+local seq = redis.call('HINCRBY', KEYS[1], 'seq', 1)
+redis.call('HSET', KEYS[1], 'paused', 'false', 'position', ARGV[7], 'rate', ARGV[6],
+  'updated_at', ARGV[2], 'by', ARGV[3], 'video', ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[4])
+redis.call('PUBLISH', ARGV[5], '{"type":"video","video":' .. ARGV[1] .. ',"by":' .. ARGV[3]
+  .. ',"seq":' .. seq .. '}')
+local state = '{"paused":false,"position":' .. ARGV[7] .. ',"rate":' .. ARGV[6]
+  .. ',"updated_at":' .. ARGV[2] .. ',"seq":' .. seq .. ',"by":' .. ARGV[3] .. '}'
+redis.call('PUBLISH', ARGV[5], '{"type":"state","state":' .. state .. '}')
 return state
 """
 
@@ -675,6 +764,15 @@ return 1
 """
 )
 
+# KEYS[1] = the user's rate log. ARGV: now, window, limit.
+_ALLOW_LUA = (
+    _RATE_LIMIT_PRELUDE
+    + """
+if allow(KEYS[1], ARGV[1], tonumber(ARGV[2]), tonumber(ARGV[3])) then return 1 end
+return 0
+"""
+)
+
 # KEYS[1] = sender's rate log. ARGV: event json, channel, now, window, limit.
 _REACT_LUA = (
     _RATE_LIMIT_PRELUDE
@@ -694,8 +792,14 @@ def _json_float(value: float) -> str:
     return json.dumps(float(value))
 
 
+def parse_redis_video(fields: dict[str, str]) -> PartyVideo | None:
+    """The ``video`` field of the ``state`` hash (written by the change-video script)."""
+    raw = fields.get("video")
+    return PartyVideo.model_validate_json(raw) if raw else None
+
+
 def parse_redis_state(fields: dict[str, str]) -> PlaybackState:
-    """Decode the ``state`` hash written by the apply-control script."""
+    """Decode the ``state`` hash written by the apply-control / change-video scripts."""
     if not fields:
         return PlaybackState()
     by_raw = fields.get("by")
@@ -746,6 +850,8 @@ class RedisPartyHub:
         self._lock: asyncio.Lock | None = None
         self._wakeup: asyncio.Event | None = None
         self._apply = redis.register_script(_APPLY_CONTROL_LUA)
+        self._change_video = redis.register_script(_CHANGE_VIDEO_LUA)
+        self._allow = redis.register_script(_ALLOW_LUA)
         self._connect = redis.register_script(_CONNECT_LUA)
         self._disconnect = redis.register_script(_DISCONNECT_LUA)
         self._sweep = redis.register_script(_SWEEP_LUA)
@@ -792,9 +898,49 @@ class RedisPartyHub:
             return channel[len(head) : -len("}:events")]
         return None
 
-    async def get_state(self, code: str) -> PlaybackState:
+    async def _state_fields(self, code: str) -> dict[str, str]:
         raw = await self._redis.hgetall(self._state_key(code))
-        return parse_redis_state({_text(k): _text(v) for k, v in raw.items()})
+        return {_text(k): _text(v) for k, v in raw.items()}
+
+    async def get_state(self, code: str) -> PlaybackState:
+        return parse_redis_state(await self._state_fields(code))
+
+    async def snapshot(self, code: str) -> tuple[PlaybackState, PartyVideo | None]:
+        fields = await self._state_fields(code)
+        return parse_redis_state(fields), parse_redis_video(fields)
+
+    async def change_video(
+        self, code: str, video: PartyVideo, *, by: PartyUser, now: float
+    ) -> PlaybackState:
+        raw = await self._change_video(
+            keys=[self._state_key(code)],
+            args=[
+                video.model_dump_json(),
+                _json_float(now),
+                by.model_dump_json(),
+                self._ttl,
+                self.channel(code),
+                _json_float(DEFAULT_RATE),
+                _json_float(0.0),
+            ],
+        )
+        return PlaybackState.model_validate_json(raw)
+
+    async def allow(
+        self,
+        code: str,
+        kind: RateKind,
+        user_id: uuid.UUID,
+        *,
+        now: float,
+        limit: int,
+        window: float,
+    ) -> bool:
+        allowed = await self._allow(
+            keys=[self._rate_key(code, kind, user_id)],
+            args=[_json_float(now), _json_float(window), limit],
+        )
+        return bool(int(allowed))
 
     async def apply_control(
         self,

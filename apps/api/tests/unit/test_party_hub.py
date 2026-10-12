@@ -26,10 +26,13 @@ from app.modules.parties.hub import (
     create_party_hub,
     next_state,
     parse_redis_state,
+    parse_redis_video,
+    video_reset_state,
 )
 from app.modules.parties.schemas import (
     ChatMessage,
     PartyUser,
+    PartyVideo,
     PlaybackState,
     PresenceMember,
     Reaction,
@@ -162,6 +165,94 @@ async def test_apply_control_orders_and_broadcasts(hub: PartyHub) -> None:
         # Other rooms see nothing.
         await hub.publish("other", {"type": "members", "count": 7})
         assert await get(other) == {"type": "members", "count": 7}
+
+
+VIDEO = PartyVideo(
+    watch_url="https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+    provider="youtube",
+    episode_id=uuid.UUID(int=42),
+)
+OTHER_VIDEO = PartyVideo(watch_url="https://www.youtube.com/watch?v=x", provider="yt")
+
+
+async def test_change_video_resets_and_broadcasts_video_then_state(hub: PartyHub) -> None:
+    assert await hub.snapshot("room") == (PlaybackState(), None)
+    await control(hub, "pause", 300, rate=2.0)
+    async with hub.subscribe("room") as sub:
+        now = 1_791_763_260.654321
+        state = await hub.change_video("room", VIDEO, by=BOB, now=now)
+        assert state == PlaybackState(
+            paused=False, position=0.0, rate=1.0, updated_at=now, seq=2, by=BOB
+        )
+        assert await get(sub) == {
+            "type": "video",
+            "video": {
+                "watch_url": VIDEO.watch_url,
+                "provider": "youtube",
+                "episode_id": str(VIDEO.episode_id),
+            },
+            "by": {"id": str(BOB.id), "display_name": "Bob"},
+            "seq": 2,
+        }
+        assert await get(sub) == {"type": "state", "state": state.model_dump(mode="json")}
+        assert await hub.snapshot("room") == (state, VIDEO)
+
+        # Controls keep the recorded video; another change replaces it.
+        after = await control(hub, "seek", 5)
+        assert await hub.snapshot("room") == (after, VIDEO)
+        again = await hub.change_video("room", OTHER_VIDEO, by=ALICE, now=now + 1)
+        assert again.seq == 4
+        video = await next_of(sub, "video")
+        assert video["video"] == {
+            "watch_url": OTHER_VIDEO.watch_url,
+            "provider": "yt",
+            "episode_id": None,
+        }
+        assert (await get(sub))["state"]["seq"] == 4  # type: ignore[index]
+        assert await hub.snapshot("room") == (again, OTHER_VIDEO)
+        assert await hub.snapshot("elsewhere") == (PlaybackState(), None)
+
+
+async def test_video_and_state_stay_adjacent_under_concurrency(hub: PartyHub) -> None:
+    async with hub.subscribe("room") as sub:
+        await asyncio.gather(
+            *(
+                hub.change_video("room", VIDEO, by=ALICE, now=float(i))
+                if i % 2
+                else control(hub, "seek", float(i))
+                for i in range(20)
+            )
+        )
+        events = [await get(sub) for _ in range(30)]  # 10 video + 10 + 10 state
+    kinds = [e["type"] for e in events]  # type: ignore[index]
+    for i, event in enumerate(events):
+        if event["type"] == "video":  # type: ignore[index]
+            nxt = events[i + 1]
+            assert nxt["type"] == "state"  # type: ignore[index]
+            assert nxt["state"]["seq"] == event["seq"]  # type: ignore[index]
+    seqs = [e["state"]["seq"] for e in events if e["type"] == "state"]  # type: ignore[index]
+    assert seqs == list(range(1, 21))
+    assert kinds.count("video") == 10
+
+
+async def test_end_forgets_video(hub: PartyHub) -> None:
+    await hub.change_video("room", VIDEO, by=ALICE, now=1.0)
+    await hub.end("room")
+    assert await hub.snapshot("room") == (PlaybackState(), None)
+
+
+async def test_allow_is_a_per_user_per_kind_sliding_window(hub: PartyHub) -> None:
+    t = 1_791_763_200.5
+
+    async def allow(user: PartyUser, at: float, kind: str = "video") -> bool:
+        return await hub.allow("room", kind, user.id, now=at, limit=1, window=2)  # type: ignore[arg-type]
+
+    assert await allow(ALICE, t) is True
+    assert await allow(ALICE, t + 1.9) is False
+    assert await allow(BOB, t + 1.9) is True
+    assert await allow(ALICE, t + 1.9, "chat") is True  # kinds are separate
+    assert await allow(ALICE, t + 2.01) is True
+    assert await hub.allow("other", "video", ALICE.id, now=t + 2.02, limit=1, window=2)
 
 
 async def test_concurrent_controls_get_unique_seqs(hub: PartyHub) -> None:
@@ -450,6 +541,18 @@ async def test_redis_reader_ignores_foreign_and_bad_messages() -> None:
     await hub.close()
 
 
+def test_parse_redis_video() -> None:
+    assert parse_redis_video({}) is None
+    assert parse_redis_video({"video": VIDEO.model_dump_json()}) == VIDEO
+
+
+def test_video_reset_state() -> None:
+    start = PlaybackState(paused=True, position=50, rate=2.0, updated_at=1.0, seq=7, by=ALICE)
+    assert video_reset_state(start, by=BOB, now=9.5) == PlaybackState(
+        paused=False, position=0.0, rate=1.0, updated_at=9.5, seq=8, by=BOB
+    )
+
+
 def test_parse_redis_state_defaults() -> None:
     assert parse_redis_state({}) == PlaybackState()
     assert parse_redis_state({"seq": "3", "paused": "false"}) == PlaybackState(seq=3, paused=False)
@@ -478,3 +581,40 @@ def test_next_state_rules() -> None:
 def test_create_party_hub_selects_backend() -> None:
     assert isinstance(create_party_hub(Settings(party_hub="memory")), InMemoryPartyHub)
     assert isinstance(create_party_hub(Settings(party_hub="redis")), RedisPartyHub)
+
+
+async def test_redis_video_order_across_processes() -> None:
+    client = fakeredis.FakeAsyncRedis(decode_responses=True)
+    first = RedisPartyHub(client, ttl_seconds=60)
+    second = RedisPartyHub(client, ttl_seconds=60)
+    async with first.subscribe("room") as on_first, second.subscribe("room") as on_second:
+        await first.change_video("room", VIDEO, by=ALICE, now=1.0)
+        await second.apply_control("room", action="seek", position=4.0, rate=None, by=BOB, now=2.0)
+        await second.change_video("room", OTHER_VIDEO, by=BOB, now=3.0)
+        seen = [[await get(sub) for _ in range(5)] for sub in (on_first, on_second)]
+    assert seen[0] == seen[1]
+    assert [(e["type"], e.get("seq") or e["state"]["seq"]) for e in seen[0]] == [  # type: ignore[index, union-attr]
+        ("video", 1),
+        ("state", 1),
+        ("state", 2),
+        ("video", 3),
+        ("state", 3),
+    ]
+    assert await first.snapshot("room") == (await second.get_state("room"), OTHER_VIDEO)
+    await second.close()
+    await first.close()
+
+
+async def test_redis_video_keys_carry_ttl() -> None:
+    client = fakeredis.FakeAsyncRedis(decode_responses=True)
+    hub = RedisPartyHub(client, ttl_seconds=3600)
+    await hub.change_video("room", VIDEO, by=ALICE, now=1.0)
+    assert await hub.allow("room", "video", ALICE.id, now=1.0, limit=1, window=2)
+    assert sorted(await client.keys("*")) == [
+        f"nightreel:party:{{room}}:rate:video:{ALICE.id}",
+        "nightreel:party:{room}:state",
+    ]
+    assert 0 < await client.ttl("nightreel:party:{room}:state") <= 3600
+    assert 0 < await client.ttl(f"nightreel:party:{{room}}:rate:video:{ALICE.id}") <= 3
+    assert await client.hget("nightreel:party:{room}:state", "video") == VIDEO.model_dump_json()
+    await hub.close()

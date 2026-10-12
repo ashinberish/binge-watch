@@ -33,3 +33,7 @@ class ContinueWatchingItem(BaseModel):
     position_seconds: int
     duration_seconds: int
     updated_at: datetime
+
+
+class HistoryItem(ContinueWatchingItem):
+    completed: bool = Field(description="Watched to at least 90%.")

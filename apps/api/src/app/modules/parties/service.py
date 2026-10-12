@@ -16,7 +16,13 @@ from app.modules.catalog.repository import CatalogRepository, CatalogRepositoryD
 from app.modules.parties.hub import PartyHub, PartyHubDep
 from app.modules.parties.models import Party, PartyMember
 from app.modules.parties.repository import PartyRepository, PartyRepositoryDep
-from app.modules.parties.schemas import PartyCreate, PartyRead, PartyUser
+from app.modules.parties.schemas import (
+    PartyCreate,
+    PartyRead,
+    PartyUser,
+    PartyVideo,
+    PlaybackState,
+)
 from app.modules.users.models import User
 
 logger = get_logger(__name__)
@@ -34,6 +40,15 @@ def generate_party_code(length: int = CODE_LENGTH) -> str:
 
 def normalize_code(code: str) -> str:
     return code.strip().lower()
+
+
+class InvalidVideoError(ValueError):
+    """A video the server won't play in a party (unsupported site or unknown episode)."""
+
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+        self.message = message
 
 
 def _body_error(field: str, message: str) -> RequestValidationError:
@@ -62,11 +77,18 @@ class PartyService:
         allowed = {h.strip().lower() for h in self.settings.party_allowed_hosts}
         return host in allowed
 
+    async def check_video(self, watch_url: str, episode_id: uuid.UUID | None) -> None:
+        """Server-side rules on top of the schema: allowed host, known episode."""
+        if not self.is_allowed_watch_url(watch_url):
+            raise InvalidVideoError("watch_url", "this site is not supported for parties")
+        if episode_id is not None and await self.catalog.get_episode(episode_id) is None:
+            raise InvalidVideoError("episode_id", "unknown episode")
+
     async def create(self, user: User, data: PartyCreate) -> PartyRead:
-        if not self.is_allowed_watch_url(data.watch_url):
-            raise _body_error("watch_url", "Value error, this site is not supported for parties")
-        if data.episode_id is not None and await self.catalog.get_episode(data.episode_id) is None:
-            raise _body_error("episode_id", "Value error, unknown episode")
+        try:
+            await self.check_video(data.watch_url, data.episode_id)
+        except InvalidVideoError as exc:
+            raise _body_error(exc.field, f"Value error, {exc.message}") from exc
 
         for attempt in range(CODE_ATTEMPTS):
             code = generate_party_code()
@@ -136,6 +158,30 @@ class PartyService:
         if party is None or not party.is_active(utcnow()):
             raise NotFoundError("Party not found or no longer active.")
         return party
+
+    async def change_video(
+        self, code: str, video: PartyVideo, *, by: PartyUser, now: float
+    ) -> PlaybackState | None:
+        """Switch an active party to ``video`` (already checked with ``check_video``).
+
+        Returns None when it already plays that ``watch_url``. Otherwise the party row is
+        updated and, while its row lock is held (PostgreSQL), the hub resets playback and
+        broadcasts ``video`` + ``state``; then the change is committed. Holding the lock
+        across the broadcast keeps the database and the hub in the same order when two
+        viewers switch at once. Raises NotFoundError if the party is no longer active.
+        """
+        party = await self.get_active(code, for_update=True)
+        if party.watch_url == video.watch_url:
+            await self.parties.rollback()  # release the row lock
+            return None
+        party.watch_url = video.watch_url
+        party.provider = video.provider
+        party.episode_id = video.episode_id
+        await self.parties.flush()
+        state = await self.hub.change_video(party.code, video, by=by, now=now)
+        await self.parties.commit()
+        logger.info("parties.video_changed", party_id=str(party.id), user_id=str(by.id))
+        return state
 
     async def is_member(self, party: Party, user_id: uuid.UUID) -> bool:
         return await self.parties.get_member(party.id, user_id) is not None

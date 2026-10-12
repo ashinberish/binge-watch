@@ -20,6 +20,21 @@ CHAT_MAX_CHARS = 500
 # --- HTTP -------------------------------------------------------------------------------
 
 
+def check_https_url(value: str) -> str:
+    """Trimmed ``value`` if it is an https URL with a host and no credentials."""
+    value = value.strip()
+    try:
+        parts = urlsplit(value)
+        _ = parts.port  # raises ValueError for a malformed port
+    except ValueError as exc:
+        raise ValueError("must be a valid URL") from exc
+    if parts.scheme != "https" or not parts.hostname:
+        raise ValueError("must be an https:// URL")
+    if parts.username is not None or parts.password is not None:
+        raise ValueError("must not contain credentials")
+    return value
+
+
 class PartyCreate(BaseModel):
     provider: str = Field(
         pattern=PROVIDER_PATTERN,
@@ -39,17 +54,7 @@ class PartyCreate(BaseModel):
     @field_validator("watch_url")
     @classmethod
     def _https_url(cls, value: str) -> str:
-        value = value.strip()
-        try:
-            parts = urlsplit(value)
-            _ = parts.port  # raises ValueError for a malformed port
-        except ValueError as exc:
-            raise ValueError("must be a valid URL") from exc
-        if parts.scheme != "https" or not parts.hostname:
-            raise ValueError("must be an https:// URL")
-        if parts.username is not None or parts.password is not None:
-            raise ValueError("must not contain credentials")
-        return value
+        return check_https_url(value)
 
 
 class PartyUser(BaseModel):
@@ -111,6 +116,33 @@ class ControlMessage(BaseModel):
     action: ControlAction
     position: float = Field(ge=0, allow_inf_nan=False)
     rate: float | None = Field(default=None, ge=MIN_RATE, le=MAX_RATE, allow_inf_nan=False)
+
+
+class PartyVideo(BaseModel):
+    """The video a party is watching (``video`` in the wire docs)."""
+
+    watch_url: str
+    provider: str
+    episode_id: uuid.UUID | None = None
+
+
+class VideoMessage(BaseModel):
+    """Switch the party to another video (validated like ``PartyCreate``)."""
+
+    type: Literal["video"]
+    watch_url: str = Field(max_length=2048)
+    provider: str = Field(pattern=PROVIDER_PATTERN)
+    episode_id: uuid.UUID | None = None
+
+    @field_validator("watch_url")
+    @classmethod
+    def _https_url(cls, value: str) -> str:
+        return check_https_url(value)
+
+    def video(self) -> PartyVideo:
+        return PartyVideo(
+            watch_url=self.watch_url, provider=self.provider, episode_id=self.episode_id
+        )
 
 
 class PingMessage(BaseModel):
@@ -194,7 +226,13 @@ class ReactMessage(BaseModel):
 
 
 AnyClientMessage = (
-    AuthMessage | ControlMessage | PingMessage | StatusMessage | ChatSendMessage | ReactMessage
+    AuthMessage
+    | ControlMessage
+    | PingMessage
+    | StatusMessage
+    | ChatSendMessage
+    | ReactMessage
+    | VideoMessage
 )
 ClientMessage = Annotated[AnyClientMessage, Field(discriminator="type")]
 client_message_adapter: TypeAdapter[AnyClientMessage] = TypeAdapter(ClientMessage)

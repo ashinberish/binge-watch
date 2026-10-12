@@ -52,7 +52,7 @@ uv run python -m app.scripts.export_openapi ../../packages/api-client/openapi.js
 | users | `GET`/`PATCH /users/me` |
 | profiles | `GET`/`POST /profiles`, `PATCH`/`DELETE /profiles/{id}` |
 | catalog | `GET /catalog/shows`, `/catalog/shows/{id}`, `/catalog/episodes/{id}/next`, `POST /catalog/match` |
-| watch_history | `PUT /history/{episode_id}/progress`, `GET /history/continue-watching` |
+| watch_history | `GET /history`, `PUT /history/{episode_id}/progress`, `GET /history/continue-watching` |
 | streaks | `GET /streaks/current` |
 | parties | `POST /parties`, `GET /parties/{code}`, `POST /parties/{code}/join`, `/parties/{code}/leave`, WebSocket `/parties/{code}/ws` |
 
@@ -108,6 +108,11 @@ tests/                 unit/ and integration/
 - **Profiles**: max 5 per account. Any profile-scoped endpoint returns 404 for a profile the
   caller doesn't own.
 - **Watch progress**: position is clamped to duration; an episode is `completed` at ≥ 90 %.
+- **Watch history**: `GET /history?profile_id=&limit=30&before=` lists completed and
+  in-progress episodes (`HistoryItem` = the continue-watching fields + `completed`), most
+  recently updated first. `limit` is 1–100. Page with `before` = the last item's
+  `updated_at`: only items updated strictly earlier are returned (an offset-less value is
+  read as UTC).
 - **Streaks**: a streak day is a UTC calendar day with ≥ 1 newly completed episode. The streak
   stays current through the following day and resets after a missed day.
 - **Billing**: `modules/billing/entitlements.require_feature()` is a no-op gate today;
@@ -116,15 +121,16 @@ tests/                 unit/ and integration/
 ## Watch parties
 
 Synced playback for several viewers, with a live member list (presence), chat and emoji
-reactions. **Everyone** in the room can control playback; the server orders controls and the
-last one wins.
+reactions. **Everyone** in the room can control playback and switch the video; the server
+orders these and the last one wins. Switching videos keeps the party: same code, invite
+link, host, members, presence and chat.
 
 ### HTTP (`/api/v1`, bearer auth)
 
 | Endpoint | |
 | --- | --- |
 | `POST /parties` → 201 `PartyRead` | Body `{provider, watch_url, episode_id?}`. `provider` matches `^[a-z0-9-]{1,32}$`; `watch_url` must be `https://` with a host in `APP_PARTY_ALLOWED_HOSTS` (default `www.youtube.com`), else 422. The creator hosts and is the first member. |
-| `GET /parties/{code}` → `PartyRead` | Any signed-in user with the code. 404 if unknown, ended or expired. |
+| `GET /parties/{code}` → `PartyRead` | Any signed-in user with the code. 404 if unknown, ended or expired. `provider`/`watch_url`/`episode_id` are the current video (updated by WebSocket `video` frames). |
 | `POST /parties/{code}/join` → `PartyRead` | Idempotent. 404 unknown/ended/expired, 409 when `APP_PARTY_MAX_MEMBERS` (20) is reached. |
 | `POST /parties/{code}/leave` → 204 | Idempotent. When the last member leaves (host or not), the party ends and sockets get `ended`. |
 
@@ -146,9 +152,11 @@ set one): authentication is the first message.
 3. Party unknown, ended or expired → close `4404`. Caller is not a member (call
    `POST /parties/{code}/join` first) → close `4403`.
 4. Server sends
-   `{"type":"welcome","state":PlaybackState,"members":int,"you":{"id","display_name"},
-   "members_list":[Member],"chat":[ChatMessage]}` (`chat` is the room's last ≤ 50 messages,
-   oldest first).
+   `{"type":"welcome","state":PlaybackState,"video":Video,"members":int,
+   "you":{"id","display_name"},"members_list":[Member],"chat":[ChatMessage]}` (`video` is the
+   current video; `chat` is the room's last ≤ 50 messages, oldest first).
+
+`Video = {"watch_url":str, "provider":str, "episode_id":str|null}` (`episode_id` a UUID).
 
 `PlaybackState = {"paused":bool, "position":float, "rate":float, "updated_at":float,
 "seq":int, "by":{"id","display_name"}|null}` — `position` in seconds at `updated_at` (server
@@ -168,6 +176,7 @@ is 32 hex characters; `sent_at` server epoch seconds).
 | Client → server | Server behaviour |
 | --- | --- |
 | `{"type":"control","action":"play"\|"pause"\|"seek","position":float≥0,"rate"?:0.25–4}` | `play` → `paused=false`, `pause` → `paused=true`, `seek` keeps `paused`. `position` from the message, `rate` from the message or unchanged, `updated_at` = server now, `seq` + 1, `by` = sender. Broadcasts `{"type":"state","state":PlaybackState}` to **all** sockets, sender included (use `seq` to drop your own echo / stale states). Max 10 controls/s per socket (burst 10); excess silently dropped. |
+| `{"type":"video","watch_url":str,"provider":str,"episode_id"?:str\|null}` | Switch the party to another video. Validated like `POST /parties` (`https://`, host in `APP_PARTY_ALLOWED_HOSTS`, provider `^[a-z0-9-]{1,32}$`, `episode_id` must exist), else `error` (e.g. `"video.watch_url: Value error, this site is not supported for parties"`). Max 1 change per 2 s per user (all their sockets); excess → `{"type":"error","detail":"Wait a moment before changing the video."}`. Same `watch_url` as the current video → nothing happens. Otherwise the party's `watch_url`/`provider`/`episode_id` are saved, playback resets to `{paused:false, position:0, rate:1, updated_at:now, seq+1, by:sender}` and **all** sockets (sender included) get `{"type":"video","video":Video,"by":{"id","display_name"},"seq":int}` immediately followed by `{"type":"state","state":PlaybackState}` with the same `seq`. Load the new video, then apply the state. |
 | `{"type":"ping"}` (every ~20 s) | `{"type":"pong","server_time":float}` — use for clock offset. |
 | `{"type":"status","status":"watching"\|"buffering"\|"ad"\|"away"}` | Sets the sender's status (per user, not per socket); a `presence` frame follows if it changed. |
 | `{"type":"chat","text":str}` | Text is cleaned (whitespace runs incl. newlines → one space, control and bidi-override characters removed, trimmed) and must then be 1–500 characters, else `error`. Max 5 messages per 5 s per user (all their sockets); excess → `{"type":"error","detail":"You're sending messages too quickly."}`. Broadcasts `{"type":"chat","message":ChatMessage}` to all sockets, sender included. |
@@ -176,6 +185,7 @@ is 32 hex characters; `sent_at` server epoch seconds).
 
 | Server → client | |
 | --- | --- |
+| `{"type":"video",...}` | The party switched videos; see `video` above. Always followed by its `state`. |
 | `{"type":"members","count":int}` | Distinct users currently connected (a user's second tab doesn't count twice), sent on every connect/disconnect. |
 | `{"type":"presence","members":[Member]}` | The full member list, whenever someone joins, leaves or changes status. Changes within ~100 ms are coalesced into one frame, and an identical list may be re-sent; always replace your list with the latest frame. |
 | `{"type":"chat","message":ChatMessage}` | A new chat message. |
@@ -185,7 +195,7 @@ is 32 hex characters; `sent_at` server epoch seconds).
 Other close codes: `4408` no message for 60 s (keep pinging), `1012` server shutting down
 (reconnect), `1011` internal error.
 
-Control rate limits are per socket; chat and reaction limits are per user and kept in the hub,
+Control rate limits are per socket; chat, reaction and video-switch limits are per user and kept in the hub,
 so they hold across tabs and API processes.
 
 **Chat is ephemeral by design.** Messages live only in the hub (the last 50 per party) and
@@ -193,12 +203,16 @@ disappear when the party ends or its TTL runs out. They are never written to Pos
 
 **Scale-out.** The handler only talks to a `PartyHub` (`modules/parties/hub.py`).
 `RedisPartyHub` (`APP_PARTY_HUB=redis`, default) keeps the party's realtime data under
-`nightreel:party:{code}:…` (TTL = party TTL): `state` (hash), `members` (hash
+`nightreel:party:{code}:…` (TTL = party TTL): `state` (hash; also holds the current
+`video` once it has been switched), `members` (hash
 `{user_id}|{proc_id}` → open sockets), `presence` / `status` / `joined` (hashes keyed by user
-id), `chat` (list, newest first, `LTRIM`med to 50) and short-lived per-user `rate:chat|react:{user_id}`
+id), `chat` (list, newest first, `LTRIM`med to 50) and short-lived per-user `rate:chat|react|video:{user_id}`
 lists. Every mutation is a Lua script that also `PUBLISH`es the resulting event on
 `nightreel:party:{code}:events`, so `seq` order equals broadcast order across processes and a
-chat message is stored and broadcast in one step. Each API process uses one pub/sub
+chat message is stored and broadcast in one step; a video switch publishes `video` and
+`state` from one script, so no other event can come between them. The Postgres update of
+the party's video is committed after that publish while its row is locked, so concurrent
+switches land in the same order in Postgres and in the hub. Each API process uses one pub/sub
 connection and fans out locally. Presence changes are published as an internal
 `presence_changed` signal; each process then re-reads the list (coalescing signals for
 ~100 ms) and sends `presence` frames to its own sockets.

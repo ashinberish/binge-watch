@@ -173,6 +173,7 @@ def test_welcome(tc: TestClient, code: str, alice: dict[str, Any]) -> None:
             "seq": 0,
             "by": None,
         },
+        "video": {"watch_url": WATCH_URL, "provider": "youtube", "episode_id": None},
         "members": 1,
         "you": {"id": alice["user"]["id"], "display_name": "Alice"},
         "members_list": [

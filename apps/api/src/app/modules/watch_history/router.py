@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
@@ -7,6 +8,7 @@ from app.api.deps import CurrentUser
 from app.core.exceptions import problem_responses
 from app.modules.watch_history.schemas import (
     ContinueWatchingItem,
+    HistoryItem,
     ProgressUpdate,
     WatchProgressRead,
 )
@@ -15,6 +17,30 @@ from app.modules.watch_history.service import WatchHistoryServiceDep
 router = APIRouter(prefix="/history", tags=["watch_history"], responses=problem_responses(401))
 
 ProfileIdQuery = Annotated[uuid.UUID, Query(description="Profile the request acts on.")]
+
+
+@router.get(
+    "",
+    response_model=list[HistoryItem],
+    operation_id="history_list",
+    responses=problem_responses(404, 422),
+)
+async def list_history(
+    profile_id: ProfileIdQuery,
+    user: CurrentUser,
+    service: WatchHistoryServiceDep,
+    limit: Annotated[int, Query(ge=1, le=100, description="Maximum items to return.")] = 30,
+    before: Annotated[
+        datetime | None,
+        Query(
+            description="Cursor: only items updated strictly before this instant. Pass the "
+            "last item's `updated_at` to fetch the next page."
+        ),
+    ] = None,
+) -> list[HistoryItem]:
+    """Watched and in-progress episodes for a profile, most recently updated first."""
+    rows = await service.list_history(user.id, profile_id, limit=limit, before=before)
+    return [HistoryItem.model_validate(row) for row in rows]
 
 
 @router.put(

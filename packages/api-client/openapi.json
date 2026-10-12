@@ -991,6 +991,114 @@
         }
       }
     },
+    "/api/v1/history": {
+      "get": {
+        "tags": [
+          "watch_history"
+        ],
+        "summary": "List History",
+        "description": "Watched and in-progress episodes for a profile, most recently updated first.",
+        "operationId": "history_list",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Profile the request acts on.",
+              "title": "Profile Id"
+            },
+            "description": "Profile the request acts on."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Maximum items to return.",
+              "default": 30,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor: only items updated strictly before this instant. Pass the last item's `updated_at` to fetch the next page.",
+              "title": "Before"
+            },
+            "description": "Cursor: only items updated strictly before this instant. Pass the last item's `updated_at` to fetch the next page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HistoryItem"
+                  },
+                  "title": "Response History List"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/history/{episode_id}/progress": {
       "put": {
         "tags": [
@@ -1675,6 +1783,80 @@
         },
         "type": "object",
         "title": "HealthStatus"
+      },
+      "HistoryItem": {
+        "properties": {
+          "episode_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Episode Id"
+          },
+          "show_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Show Id"
+          },
+          "show_title": {
+            "type": "string",
+            "title": "Show Title"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Url"
+          },
+          "season_number": {
+            "type": "integer",
+            "title": "Season Number"
+          },
+          "episode_number": {
+            "type": "integer",
+            "title": "Episode Number"
+          },
+          "episode_title": {
+            "type": "string",
+            "title": "Episode Title"
+          },
+          "position_seconds": {
+            "type": "integer",
+            "title": "Position Seconds"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Completed",
+            "description": "Watched to at least 90%."
+          }
+        },
+        "type": "object",
+        "required": [
+          "episode_id",
+          "show_id",
+          "show_title",
+          "poster_url",
+          "season_number",
+          "episode_number",
+          "episode_title",
+          "position_seconds",
+          "duration_seconds",
+          "updated_at",
+          "completed"
+        ],
+        "title": "HistoryItem"
       },
       "LoginRequest": {
         "properties": {

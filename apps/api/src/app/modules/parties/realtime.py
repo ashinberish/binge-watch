@@ -1,5 +1,5 @@
-"""Watch-party WebSocket: in-band auth, then playback control, presence, chat and
-reactions relayed through the hub.
+"""Watch-party WebSocket: in-band auth, then playback control, video changes, presence,
+chat and reactions relayed through the hub.
 
 See the "Watch parties" section of the README for the wire protocol.
 """
@@ -33,13 +33,15 @@ from app.modules.parties.schemas import (
     ChatSendMessage,
     ControlMessage,
     PartyUser,
+    PartyVideo,
     PingMessage,
     Reaction,
     ReactMessage,
     StatusMessage,
+    VideoMessage,
     client_message_adapter,
 )
-from app.modules.parties.service import PartyService
+from app.modules.parties.service import InvalidVideoError, PartyService
 from app.modules.users.repository import UserRepository
 
 logger = get_logger(__name__)
@@ -55,6 +57,9 @@ CHAT_RATE_WINDOW_SECONDS = 5.0
 REACT_RATE_LIMIT = 3
 REACT_RATE_WINDOW_SECONDS = 1.0
 CHAT_RATE_LIMITED_DETAIL = "You're sending messages too quickly."
+VIDEO_RATE_LIMIT = 1
+VIDEO_RATE_WINDOW_SECONDS = 2.0
+VIDEO_RATE_LIMITED_DETAIL = "Wait a moment before changing the video."
 MAX_MESSAGE_CHARS = 8192
 
 
@@ -124,6 +129,7 @@ class _Admission:
     code: str
     expires_at: datetime
     is_host: bool
+    video: PartyVideo
 
 
 class PartyConnection:
@@ -191,6 +197,11 @@ class PartyConnection:
                 code=party.code,
                 expires_at=party.expires_at,
                 is_host=party.host_user_id == user.id,
+                video=PartyVideo(
+                    watch_url=party.watch_url,
+                    provider=party.provider,
+                    episode_id=party.episode_id,
+                ),
             )
 
     async def _run(self, admission: _Admission) -> None:
@@ -201,12 +212,16 @@ class PartyConnection:
         outcome: Close | None = None
         try:
             async with self.hub.subscribe(code) as sub:
-                state = await self.hub.get_state(code)
+                state, video = await self.hub.snapshot(code)
+                # The hub records the video once it has been changed; before that the
+                # party's original video (read at admission) is current.
+                video = video or admission.video
                 self._last_seq = state.seq
                 await self._send(
                     {
                         "type": "welcome",
                         "state": state.model_dump(mode="json"),
+                        "video": video.model_dump(mode="json"),
                         "members": await self.hub.member_count(code),
                         "you": me.model_dump(mode="json"),
                         "members_list": [
@@ -297,8 +312,36 @@ class PartyConnection:
                 await self.hub.react(
                     code, reaction, limit=REACT_RATE_LIMIT, window=REACT_RATE_WINDOW_SECONDS
                 )
+            elif isinstance(message, VideoMessage):
+                await self._change_video(code, me, message)
             elif isinstance(message, AuthMessage):
                 await self._error("already authenticated")
+
+    async def _change_video(self, code: str, me: PartyUser, message: VideoMessage) -> None:
+        async with self.sessionmaker() as session:
+            service = PartyService(
+                PartyRepository(session), CatalogRepository(session), self.hub, self.settings
+            )
+            try:
+                await service.check_video(message.watch_url, message.episode_id)
+            except InvalidVideoError as exc:
+                await self._error(f"video.{exc.field}: Value error, {exc.message}")
+                return
+            allowed = await self.hub.allow(
+                code,
+                "video",
+                me.id,
+                now=epoch_seconds(),
+                limit=VIDEO_RATE_LIMIT,
+                window=VIDEO_RATE_WINDOW_SECONDS,
+            )
+            if not allowed:
+                await self._error(VIDEO_RATE_LIMITED_DETAIL)
+                return
+            try:
+                await service.change_video(code, message.video(), by=me, now=epoch_seconds())
+            except NotFoundError:  # ended or expired meanwhile; `ended` follows
+                await self._error("party not found or no longer active")
 
     async def _forward_events(self, sub: Subscription) -> Close:
         while True:
@@ -312,6 +355,10 @@ class PartyConnection:
                     continue  # already reflected in the welcome or a later state
                 self._last_seq = seq
                 await self._send(event)
+            elif kind == "video":
+                # Its `state` (same seq) follows and advances _last_seq.
+                if int(event["seq"]) > self._last_seq:
+                    await self._send(event)
             elif kind in {"members", "presence", "chat", "reaction"}:
                 await self._send(event)
             elif kind == "ended":

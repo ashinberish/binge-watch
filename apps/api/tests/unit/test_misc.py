@@ -32,6 +32,7 @@ EXPECTED_OPERATION_IDS = {
     "catalog_get_next_episode",
     "history_update_progress",
     "history_continue_watching",
+    "history_list",
     "streaks_get_current",
     "parties_create",
     "parties_get",

@@ -326,6 +326,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List History
+         * @description Watched and in-progress episodes for a profile, most recently updated first.
+         */
+        get: operations["history_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/history/{episode_id}/progress": {
         parameters: {
             query?: never;
@@ -564,6 +584,43 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** HistoryItem */
+        HistoryItem: {
+            /**
+             * Episode Id
+             * Format: uuid
+             */
+            episode_id: string;
+            /**
+             * Show Id
+             * Format: uuid
+             */
+            show_id: string;
+            /** Show Title */
+            show_title: string;
+            /** Poster Url */
+            poster_url: string | null;
+            /** Season Number */
+            season_number: number;
+            /** Episode Number */
+            episode_number: number;
+            /** Episode Title */
+            episode_title: string;
+            /** Position Seconds */
+            position_seconds: number;
+            /** Duration Seconds */
+            duration_seconds: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Completed
+             * @description Watched to at least 90%.
+             */
+            completed: boolean;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -1699,6 +1756,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NextEpisode"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblemDetail"];
+                };
+            };
+        };
+    };
+    history_list: {
+        parameters: {
+            query: {
+                /** @description Profile the request acts on. */
+                profile_id: string;
+                /** @description Maximum items to return. */
+                limit?: number;
+                /** @description Cursor: only items updated strictly before this instant. Pass the last item's `updated_at` to fetch the next page. */
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryItem"][];
                 };
             };
             /** @description Missing or invalid credentials */

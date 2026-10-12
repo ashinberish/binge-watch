@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends
@@ -10,6 +11,7 @@ from app.modules.streaks.service import StreakService, StreakServiceDep
 from app.modules.watch_history.models import WatchProgress
 from app.modules.watch_history.repository import (
     ContinueWatchingRow,
+    HistoryRow,
     WatchHistoryRepository,
     WatchHistoryRepositoryDep,
 )
@@ -71,6 +73,19 @@ class WatchHistoryService:
     ) -> list[ContinueWatchingRow]:
         await self.profiles.get_owned(user_id, profile_id)
         return await self.history.continue_watching(profile_id, limit=limit)
+
+    async def list_history(
+        self,
+        user_id: uuid.UUID,
+        profile_id: uuid.UUID,
+        *,
+        limit: int,
+        before: datetime | None = None,
+    ) -> list[HistoryRow]:
+        await self.profiles.get_owned(user_id, profile_id)
+        if before is not None and before.tzinfo is None:
+            before = before.replace(tzinfo=UTC)  # a cursor without offset is read as UTC
+        return await self.history.history(profile_id, limit=limit, before=before)
 
 
 def get_watch_history_service(
