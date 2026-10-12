@@ -1,0 +1,8 @@
+# Keep LF in the repo and working tree on every OS, so Windows checkouts
+# don't trip Prettier, ruff or shell scripts in Docker images.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

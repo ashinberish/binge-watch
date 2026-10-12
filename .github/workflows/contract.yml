@@ -18,5 +18,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: cd apps/api && uv sync --locked
-      - run: make gen
+      - run: pnpm gen
       - run: git diff --exit-code -- packages/api-client

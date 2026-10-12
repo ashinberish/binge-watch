@@ -6,16 +6,32 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "turbo run dev",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "services:up": "docker compose up -d postgres redis",
+    "services:down": "docker compose down",
+    "migrate": "uv run --directory apps/api alembic upgrade head",
+    "seed": "uv run --directory apps/api python -m app.scripts.seed",
+    "dev": "concurrently -k -n api,web,ext -c red,blue,yellow \"pnpm:dev:api\" \"pnpm:dev:web\" \"pnpm:dev:extension\"",
+    "dev:api": "uv run --directory apps/api uvicorn app.main:app --reload --port 8000",
+    "dev:web": "pnpm --filter @nightreel/web dev",
+    "dev:extension": "pnpm --filter @nightreel/extension dev",
+    "worker": "uv run --directory apps/api celery -A app.workers.celery_app worker -l info --pool=solo",
+    "storybook": "pnpm --filter @nightreel/ui storybook",
     "build": "turbo run build",
-    "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "lint": "turbo run lint && pnpm lint:api",
+    "lint:api": "uv run --directory apps/api ruff check . && uv run --directory apps/api ruff format --check .",
+    "typecheck": "turbo run typecheck && pnpm typecheck:api",
+    "typecheck:api": "uv run --directory apps/api mypy src",
+    "test": "turbo run test && pnpm test:api",
+    "test:api": "uv run --directory apps/api pytest",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "gen": "uv run --directory apps/api python -m app.scripts.export_openapi ../../packages/api-client/openapi.json && pnpm gen:api",
     "gen:api": "pnpm --filter @nightreel/api-client generate"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "prettier": "^3.6.2",
     "turbo": "^2.5.8"
   }

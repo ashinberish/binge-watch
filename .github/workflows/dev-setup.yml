@@ -1,0 +1,32 @@
+name: Dev setup
+
+# Proves `pnpm bootstrap` and the checks work on every OS developers use.
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'scripts/**'
+      - 'apps/api/pyproject.toml'
+      - 'apps/api/uv.lock'
+      - '.github/workflows/dev-setup.yml'
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.13
+      - run: pnpm bootstrap
+      - run: pnpm check
