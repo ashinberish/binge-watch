@@ -7,8 +7,8 @@
   },
   "scripts": {
     "bootstrap": "node scripts/bootstrap.mjs",
-    "services:up": "docker compose up -d postgres redis",
-    "services:down": "docker compose down",
+    "services:up": "node scripts/services.mjs up",
+    "services:down": "node scripts/services.mjs down",
     "migrate": "uv run --directory apps/api alembic upgrade head",
     "seed": "uv run --directory apps/api python -m app.scripts.seed",
     "dev": "concurrently -k -n api,web,ext -c red,blue,yellow \"pnpm:dev:api\" \"pnpm:dev:web\" \"pnpm:dev:extension\"",
