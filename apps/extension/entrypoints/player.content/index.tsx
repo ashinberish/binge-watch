@@ -2,13 +2,17 @@ import '@nightreel/ui/styles.css'
 import './style.css'
 
 import { NEXT_EPISODE_COUNTDOWN_SECONDS } from '@nightreel/shared'
+import type { ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import { SUPPORTED_HOSTS } from '../../src/adapters/hosts'
 import { adapterFor, adapterForSite } from '../../src/adapters/registry'
 import { createCountdownController } from '../../src/features/countdown/controller'
 import { NextEpisodeCard } from '../../src/features/countdown/NextEpisodeCard'
-import { send } from '../../src/messaging/protocol'
+import { createPartyOverlay } from '../../src/features/party/overlay'
+import { PartyOverlay } from '../../src/features/party/PartyOverlay'
+import { MEDIA_EVENTS } from '../../src/party/engine'
+import { isPartyTabMessage, send } from '../../src/messaging/protocol'
 
 const REPORT_EVERY_MS = 15_000
 const TICK_MS = 1_000
@@ -34,6 +38,17 @@ export default defineContentScript({
     })
     ui.mount()
 
+    // The countdown card and the watch party share the shadow root.
+    let countdownNode: ReactNode = null
+    let partyNode: ReactNode = null
+    const renderOverlay = () =>
+      ui.mounted?.render(
+        <>
+          {partyNode}
+          {countdownNode}
+        </>,
+      )
+
     const controller = createCountdownController({
       adapter: site,
       doc: document,
@@ -53,20 +68,49 @@ export default defineContentScript({
         }
       },
       render(view) {
-        ui.mounted?.render(
-          view ? (
-            <NextEpisodeCard
-              key={view.key}
-              next={view.next}
-              seconds={view.seconds}
-              paused={view.paused}
-              onPlay={controller.playNext}
-              onDismiss={controller.dismiss}
-            />
-          ) : null,
-        )
+        countdownNode = view ? (
+          <NextEpisodeCard
+            key={view.key}
+            next={view.next}
+            seconds={view.seconds}
+            paused={view.paused}
+            onPlay={controller.playNext}
+            onDismiss={controller.dismiss}
+          />
+        ) : null
+        renderOverlay()
       },
     })
+
+    const party = createPartyOverlay({
+      adapter: site,
+      doc: document,
+      send,
+      replaceUrl: (url) => history.replaceState(history.state, '', url),
+      render(view) {
+        partyNode = view ? (
+          <PartyOverlay
+            view={view}
+            onJoin={() => void party.join()}
+            onDismiss={party.dismiss}
+            onResync={party.resync}
+          />
+        ) : null
+        renderOverlay()
+      },
+    })
+    const onPartyMessage = (message: unknown, sender: chrome.runtime.MessageSender) => {
+      if (sender.id === chrome.runtime.id && isPartyTabMessage(message)) party.receive(message)
+    }
+    chrome.runtime.onMessage.addListener(onPartyMessage)
+    ctx.onInvalidated(() => chrome.runtime.onMessage.removeListener(onPartyMessage))
+    ctx.addEventListener(window, 'wxt:locationchange', () => party.checkInvite())
+    for (const type of MEDIA_EVENTS) {
+      ctx.addEventListener(document, type, (event) => party.mediaEvent(type, event.target), {
+        capture: true,
+      })
+    }
+    void party.start()
 
     const report = () => {
       const video = site.findVideo(document)
@@ -81,7 +125,10 @@ export default defineContentScript({
       if (!site.findVideo(document)?.paused) report()
     }, REPORT_EVERY_MS)
 
-    ctx.setInterval(controller.tick, TICK_MS)
+    ctx.setInterval(() => {
+      controller.tick()
+      party.tick()
+    }, TICK_MS)
 
     // Media events don't bubble; capture catches them from whichever <video> the player uses.
     const onEnded = () => {

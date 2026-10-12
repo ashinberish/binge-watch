@@ -2,6 +2,7 @@ import { Avatar, Button, Skeleton } from '@nightreel/ui'
 import { useEffect, useState } from 'react'
 
 import { ContinueWatchingList } from '../../src/features/continue-watching/ContinueWatchingList'
+import { PartyPanel } from '../../src/features/party/PartyPanel'
 import { NoProfiles, ProfileSwitcher } from '../../src/features/profiles/ProfileSwitcher'
 import { SignInPanel } from '../../src/features/session/SignInPanel'
 import { StreakLine } from '../../src/features/streaks/StreakLine'
@@ -122,6 +123,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <main className="nr-popup">
       <Header profile={active} />
+      <PartyPanel />
       {body}
       <footer className="nr-popup__footer">
         <a href={env.webUrl} target="_blank" rel="noreferrer">

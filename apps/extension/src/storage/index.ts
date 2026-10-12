@@ -1,5 +1,6 @@
 import type { PlaybackSnapshot } from '../adapters/types'
 import type { MatchResult } from '../lib/types'
+import type { StoredParty } from '../party/rooms'
 
 /**
  * Typed wrappers over chrome.storage. The service worker can be killed at any
@@ -16,6 +17,8 @@ export interface SessionArea {
   accessExpiresAt?: number
   /** Latest catalog match per tab, for the side panel. Keyed by tab id. */
   tabMatches?: Record<string, MatchResult>
+  /** Watch party per tab, so a restarted service worker can reconnect. Keyed by tab id. */
+  tabParties?: Record<string, StoredParty>
 }
 
 export interface LocalArea {

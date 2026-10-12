@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createHandler, type Sender, type Services } from '../../src/background/handler'
 import { ok } from '../../src/lib/result'
+import type { PartyTabView } from '../../src/messaging/protocol'
 import { item, match } from './fixtures'
 
 const ORIGIN = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/'
@@ -10,9 +11,25 @@ const player: Sender = {
   url: 'https://www.youtube.com/watch?v=abc',
   tab: { id: 7, url: 'https://www.youtube.com/watch?v=abc' } as chrome.tabs.Tab,
 }
+const ytHome: Sender = {
+  url: 'https://www.youtube.com/',
+  tab: { id: 9, url: 'https://www.youtube.com/' } as chrome.tabs.Tab,
+}
 const otherSite: Sender = {
   url: 'https://example.com/',
   tab: { id: 8, url: 'https://example.com/' } as chrome.tabs.Tab,
+}
+
+const partyView: PartyTabView = {
+  code: 'K7xQ2m',
+  inviteUrl: 'http://web.test/party/K7xQ2m',
+  hostName: 'Kai',
+  provider: 'youtube',
+  watchUrl: 'https://www.youtube.com/watch?v=abc',
+  memberCount: 2,
+  status: 'live',
+  state: null,
+  clockOffsetMs: 0,
 }
 
 function fakeServices(): Services {
@@ -32,6 +49,11 @@ function fakeServices(): Services {
     ),
     getSettings: vi.fn(async () => ({ countdownSeconds: 10 })),
     setSettings: vi.fn(async (s) => ({ countdownSeconds: s.countdownSeconds ?? 10 })),
+    startParty: vi.fn(async () => ok(partyView)),
+    leaveParty: vi.fn(async () => undefined),
+    partyForTab: vi.fn(async () => partyView),
+    partyJoinRequest: vi.fn(async () => ok({ ...partyView, status: 'invited' as const })),
+    reportPartyAction: vi.fn(async () => true),
   }
 }
 
@@ -118,5 +140,102 @@ describe('message handler', () => {
     const handle = createHandler(fakeServices(), ORIGIN)
     expect(await handle(null, popup)).toBeUndefined()
     expect(await handle({ type: 'unknown' }, popup)).toBeUndefined()
+  })
+
+  describe('watch party messages', () => {
+    it('lets extension pages start, leave and look up any tab’s party', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      expect(await handle({ type: 'party:start', tabId: 7 }, popup)).toEqual(ok(partyView))
+      expect(services.startParty).toHaveBeenCalledWith(7)
+      expect(await handle({ type: 'party:get-for-tab', tabId: 7 }, popup)).toEqual(partyView)
+      expect(services.partyForTab).toHaveBeenCalledWith(7)
+      expect(await handle({ type: 'party:leave', tabId: 7 }, popup)).toEqual({ ok: true })
+      expect(services.leaveParty).toHaveBeenCalledWith(7)
+      expect(await handle({ type: 'party:start', tabId: 'x' }, popup)).toEqual({
+        ok: false,
+        error: 'rejected',
+      })
+    })
+
+    it('keeps start and leave away from content scripts', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      expect(await handle({ type: 'party:start', tabId: 7 }, player)).toEqual({ ok: false })
+      expect(await handle({ type: 'party:leave', tabId: 7 }, player)).toEqual({ ok: false })
+      expect(services.startParty).not.toHaveBeenCalled()
+      expect(services.leaveParty).not.toHaveBeenCalled()
+    })
+
+    it('answers a content script about its own player tab only', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      await handle({ type: 'party:get-for-tab', tabId: 99 }, player)
+      expect(services.partyForTab).toHaveBeenCalledWith(7)
+      expect(await handle({ type: 'party:get-for-tab' }, ytHome)).toBeNull()
+      expect(await handle({ type: 'party:get-for-tab' }, otherSite)).toBeNull()
+      expect(services.partyForTab).toHaveBeenCalledOnce()
+    })
+
+    it('relays reported actions from the player tab, checked field by field', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      const report = { type: 'party:report', adapter: 'youtube', action: 'seek', position: 42.5 }
+      expect(await handle({ ...report, rate: 1.5 }, player)).toEqual({ ok: true })
+      expect(services.reportPartyAction).toHaveBeenCalledWith(7, {
+        action: 'seek',
+        position: 42.5,
+        rate: 1.5,
+      })
+      expect(await handle(report, player)).toEqual({ ok: true })
+      expect(services.reportPartyAction).toHaveBeenLastCalledWith(7, {
+        action: 'seek',
+        position: 42.5,
+        rate: 1,
+      })
+
+      for (const bad of [
+        { ...report, action: 'rewind' },
+        { ...report, position: -1 },
+        { ...report, position: Number.NaN },
+        { ...report, position: '5' },
+        { ...report, rate: 0 },
+        { ...report, rate: 100 },
+        { ...report, adapter: 'netflix' },
+      ]) {
+        expect(await handle(bad, player)).toEqual({ ok: false })
+      }
+      expect(await handle(report, ytHome)).toEqual({ ok: false })
+      expect(await handle(report, otherSite)).toEqual({ ok: false })
+      expect(await handle(report, popup)).toEqual({ ok: false })
+      expect(services.reportPartyAction).toHaveBeenCalledTimes(2)
+    })
+
+    it('passes invite links from the player tab on, with the tab’s URL', async () => {
+      const services = fakeServices()
+      const handle = createHandler(services, ORIGIN)
+      const ask = { type: 'party:join-request', adapter: 'youtube', code: 'K7xQ2m', confirm: false }
+      expect(await handle(ask, player)).toMatchObject({ ok: true })
+      expect(services.partyJoinRequest).toHaveBeenCalledWith(
+        7,
+        'https://www.youtube.com/watch?v=abc',
+        'K7xQ2m',
+        false,
+      )
+      await handle({ ...ask, confirm: true }, player)
+      expect(services.partyJoinRequest).toHaveBeenLastCalledWith(
+        7,
+        'https://www.youtube.com/watch?v=abc',
+        'K7xQ2m',
+        true,
+      )
+
+      const rejected = { ok: false, error: 'rejected' }
+      expect(await handle({ ...ask, code: '../../x' }, player)).toEqual(rejected)
+      expect(await handle({ ...ask, code: 42 }, player)).toEqual(rejected)
+      expect(await handle(ask, otherSite)).toEqual(rejected)
+      expect(await handle(ask, popup)).toEqual(rejected)
+      expect(services.partyJoinRequest).toHaveBeenCalledTimes(2)
+    })
   })
 })

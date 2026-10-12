@@ -1,6 +1,10 @@
 import type { PlaybackSnapshot } from '../adapters/types'
 import type { Result } from '../lib/result'
 import type { ContinueWatchingItem, MatchResult, Profile, ShowDetail, Streak } from '../lib/types'
+import type { ControlAction } from '../party/protocol'
+import type { PartyTabMessage, PartyTabView } from '../party/rooms'
+
+export type { PartyTabMessage, PartyTabView }
 
 /**
  * Every message between contexts is one of these. The service worker answers; popup,
@@ -10,6 +14,21 @@ export type Message =
   // From the content script on a supported player.
   | { type: 'progress'; adapter: string; snapshot: PlaybackSnapshot }
   | { type: 'episode:current'; adapter: string; snapshot: PlaybackSnapshot }
+  /** A play, pause or seek the viewer made on the player, for the tab's watch party. */
+  | {
+      type: 'party:report'
+      adapter: string
+      action: ControlAction
+      position: number
+      rate?: number
+    }
+  /**
+   * An invite link opened this tab. `confirm: false` only looks the party up (to ask the
+   * viewer); `confirm: true` is the viewer's click on Join.
+   */
+  | { type: 'party:join-request'; adapter: string; code: string; confirm: boolean }
+  // From the content script (its own tab) or an extension page (any tab, by id).
+  | { type: 'party:get-for-tab'; tabId?: number }
   // From extension pages (popup, options, side panel).
   | { type: 'session:get' }
   | { type: 'session:sign-in' }
@@ -22,6 +41,8 @@ export type Message =
   | { type: 'show:get'; showId: string }
   | { type: 'settings:get' }
   | { type: 'settings:set'; settings: Partial<Settings> }
+  | { type: 'party:start'; tabId: number }
+  | { type: 'party:leave'; tabId: number }
 
 export type MessageType = Message['type']
 
@@ -58,6 +79,11 @@ interface ReplyMap {
   'show:get': Result<ShowDetail>
   'settings:get': Settings
   'settings:set': Settings
+  'party:report': Ack
+  'party:join-request': Result<PartyTabView>
+  'party:get-for-tab': PartyTabView | null
+  'party:start': Result<PartyTabView>
+  'party:leave': Ack
 }
 
 export type ReplyOf<T extends MessageType> = ReplyMap[T]
@@ -69,9 +95,12 @@ export function send<M extends Message>(message: M): Promise<Reply<M>> {
 }
 
 /** Fire-and-forget notices from the service worker to open extension pages. */
-export type Broadcast = { type: 'episode:changed'; tabId: number } | { type: 'session:changed' }
+export type Broadcast =
+  | { type: 'episode:changed'; tabId: number }
+  | { type: 'session:changed' }
+  | { type: 'party:changed'; tabId: number }
 
-const BROADCAST_TYPES = new Set<string>(['episode:changed', 'session:changed'])
+const BROADCAST_TYPES = new Set<string>(['episode:changed', 'session:changed', 'party:changed'])
 
 export function isBroadcast(value: unknown): value is Broadcast {
   return (
@@ -93,4 +122,20 @@ export function onBroadcast(listener: (message: Broadcast) => void): () => void 
   }
   chrome.runtime.onMessage.addListener(handler)
   return () => chrome.runtime.onMessage.removeListener(handler)
+}
+
+const PARTY_TAB_TYPES = new Set<string>(['party:state', 'party:members', 'party:ended'])
+
+export function isPartyTabMessage(value: unknown): value is PartyTabMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    PARTY_TAB_TYPES.has((value as { type?: unknown }).type as string) &&
+    typeof (value as { code?: unknown }).code === 'string'
+  )
+}
+
+/** Service worker → one tab's content script. A tab without our content script is ignored. */
+export function sendToTab(tabId: number, message: PartyTabMessage): void {
+  chrome.tabs.sendMessage(tabId, message).catch(() => undefined)
 }

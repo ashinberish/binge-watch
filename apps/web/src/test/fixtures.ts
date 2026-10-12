@@ -69,3 +69,16 @@ export const problem = (status: number, title: string, detail?: string) => ({
   detail,
   instance: '/api/v1',
 })
+
+export const party = {
+  id: 'pt_1',
+  code: 'K7xQ2m',
+  invite_url: 'http://web.test/party/K7xQ2m',
+  provider: 'youtube',
+  watch_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  episode_id: null,
+  host: { id: 'u_2', display_name: 'Mo' },
+  member_count: 2,
+  expires_at: '2026-10-13T03:00:00Z',
+  created_at: '2026-10-12T21:00:00Z',
+}

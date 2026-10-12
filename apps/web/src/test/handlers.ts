@@ -1,5 +1,14 @@
 import { http, HttpResponse } from 'msw'
-import { API, continueWatching, problem, profiles, streak, tokenPair, user } from './fixtures'
+import {
+  API,
+  continueWatching,
+  party,
+  problem,
+  profiles,
+  streak,
+  tokenPair,
+  user,
+} from './fixtures'
 
 const problemJson = (status: number, title: string, detail?: string) =>
   HttpResponse.json(problem(status, title, detail), {
@@ -64,4 +73,24 @@ export const handlers = [
       ? HttpResponse.json({ code: 'code-1', expires_in: 60 }, { status: 201 })
       : problemJson(401, 'Unauthorized'),
   ),
+  // Watch parties. Code "ended" is gone (404); code "full" cannot take more members (409).
+  http.post(`${API}/parties`, async ({ request }) => {
+    const body = (await request.json()) as {
+      provider: string
+      watch_url: string
+      episode_id: string | null
+    }
+    return HttpResponse.json({ ...party, ...body, member_count: 1 }, { status: 201 })
+  }),
+  http.get(`${API}/parties/:code`, ({ params }) =>
+    params.code === 'ended'
+      ? problemJson(404, 'Not Found', 'Party not found.')
+      : HttpResponse.json({ ...party, code: params.code }),
+  ),
+  http.post(`${API}/parties/:code/join`, ({ params }) => {
+    if (params.code === 'ended') return problemJson(404, 'Not Found', 'Party not found.')
+    if (params.code === 'full') return problemJson(409, 'Conflict', 'Party is full.')
+    return HttpResponse.json({ ...party, code: params.code, member_count: party.member_count + 1 })
+  }),
+  http.post(`${API}/parties/:code/leave`, () => new HttpResponse(null, { status: 204 })),
 ]

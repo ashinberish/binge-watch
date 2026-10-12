@@ -49,3 +49,79 @@
     transform: translateY(8px);
   }
 }
+
+/* Watch party invite: same card as the countdown, text only (no ring). */
+.nr-party-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nr-party-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nr-space-1);
+  margin: 0;
+}
+
+.nr-party-card__text p {
+  margin: 0;
+}
+
+.nr-party-card__muted {
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+}
+
+.nr-party-card__error {
+  color: var(--nr-color-danger);
+}
+
+/*
+ * Watch party pill: small and quiet, in the video's top-right corner (positioned inline
+ * from the video's box), away from the player's controls along the bottom edge.
+ */
+.nr-party-pill {
+  position: fixed;
+  top: var(--nr-space-16);
+  right: var(--nr-space-6);
+  z-index: 2147483646;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nr-space-2);
+  padding: var(--nr-space-1) var(--nr-space-3);
+  background: var(--nr-color-scrim);
+  border-radius: var(--nr-radius-pill);
+  color: var(--nr-color-ink);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+  /* The pill is information; clicks fall through to the player except on its button. */
+  pointer-events: none;
+}
+
+.nr-party-pill__action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--nr-color-brand-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.nr-party-pill__action:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nr-party-pill {
+    animation: nr-party-pill-in var(--nr-duration-base) var(--nr-ease-out);
+  }
+}
+
+@keyframes nr-party-pill-in {
+  from {
+    opacity: 0;
+  }
+}

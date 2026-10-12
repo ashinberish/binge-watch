@@ -1,5 +1,17 @@
 import type { PlayerAdapter } from '../types'
 
+const VIDEO_ID = /^[A-Za-z0-9_-]{6,20}$/
+
+function pageUrl(page: Document | URL | string): URL | null {
+  try {
+    if (typeof page === 'string') return new URL(page)
+    if (page instanceof URL) return page
+    return new URL(page.location.href)
+  } catch {
+    return null
+  }
+}
+
 export const youtube: PlayerAdapter = {
   id: 'youtube',
   name: 'YouTube',
@@ -18,6 +30,12 @@ export const youtube: PlayerAdapter = {
       positionSeconds: Math.floor(video.currentTime),
       durationSeconds: Math.floor(video.duration),
     }
+  },
+  watchUrl(page) {
+    const url = pageUrl(page)
+    if (!url || url.hostname !== 'www.youtube.com' || url.pathname !== '/watch') return null
+    const id = url.searchParams.get('v')
+    return id && VIDEO_ID.test(id) ? `https://www.youtube.com/watch?v=${id}` : null
   },
   playNext(doc) {
     const next = doc.querySelector<HTMLElement>('.ytp-next-button')

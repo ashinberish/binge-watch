@@ -5,7 +5,10 @@ import { env } from '../lib/env'
 import { fail, ok, request, type Result } from '../lib/result'
 import { normalizeSettings } from '../lib/settings'
 import type { MatchResult, Profile } from '../lib/types'
-import { broadcast, type SessionState, type Settings } from '../messaging/protocol'
+import { broadcast, sendToTab, type SessionState, type Settings } from '../messaging/protocol'
+import { createPartyConnection, webSocketFactory } from '../party/connection'
+import { partySocketUrl } from '../party/protocol'
+import { createPartyRooms, type PartyApi } from '../party/rooms'
 import { localStore, serialized, sessionStore } from '../storage'
 import { cachedMatch, matchKey, writeCachedMatch } from '../sync/match-cache'
 import { clearQueue, createFlushScheduler, flush, push, type FlushDeps } from '../sync/queue'
@@ -64,6 +67,8 @@ async function signOut(): Promise<void> {
       .POST('/api/v1/auth/logout', { body: { refresh_token: refreshToken } })
       .catch(() => undefined)
   }
+  // Parties belong to the account too; leave them while the token still works.
+  await rooms.leaveAll()
   await session.clear()
   // Progress and the profile choice belong to the account that just left.
   await Promise.all([localStore.remove(['activeProfileId']), clearQueue()])
@@ -246,6 +251,77 @@ async function setSettings(next: Partial<Settings>): Promise<Settings> {
   return settings
 }
 
+// ---------------------------------------------------------------------------
+// Watch parties
+
+/** Refresh the access token when it has less than this long to live before opening a socket. */
+const TOKEN_MIN_LIFE_MS = 60_000
+
+/** A fresh access token for the party socket's auth frame, or null when signed out. */
+async function partyToken(): Promise<string | null> {
+  await session.load()
+  if (!(await session.isSignedIn())) return null
+  const { accessExpiresAt } = await sessionStore.get()
+  if (
+    !session.getAccessToken() ||
+    accessExpiresAt === undefined ||
+    accessExpiresAt - Date.now() < TOKEN_MIN_LIFE_MS
+  ) {
+    await session.refresh()
+  }
+  return session.getAccessToken()
+}
+
+const partyApi: PartyApi = {
+  create: (body) => request(() => api.POST('/api/v1/parties', { body })),
+  get: (code) => request(() => api.GET('/api/v1/parties/{code}', { params: { path: { code } } })),
+  join: (code) =>
+    request(() => api.POST('/api/v1/parties/{code}/join', { params: { path: { code } } }), {
+      409: 'full',
+    }),
+  leave: (code) =>
+    request(() => api.POST('/api/v1/parties/{code}/leave', { params: { path: { code } } })),
+}
+
+async function tabUrl(tabId: number): Promise<string | null> {
+  try {
+    return (await chrome.tabs.get(tabId)).url ?? null
+  } catch {
+    return null // the tab is gone
+  }
+}
+
+export const rooms = createPartyRooms({
+  api: partyApi,
+  connect(code, handlers) {
+    const connection = createPartyConnection({
+      url: partySocketUrl(env.apiUrl, code),
+      createSocket: webSocketFactory,
+      getToken: partyToken,
+      refreshToken: () => session.refresh(),
+      ...handlers,
+    })
+    connection.connect()
+    return connection
+  },
+  sendToTab,
+  notifyChanged: (tabId) => broadcast({ type: 'party:changed', tabId }),
+  tabUrl,
+  episodeIdForTab: async (tabId) => (await episodeForTab(tabId))?.episode_id ?? null,
+  load: async () => (await sessionStore.get()).tabParties ?? {},
+  save: (tabParties) => serialized(() => sessionStore.set({ tabParties })),
+})
+
+async function startParty(tabId: number) {
+  if (!(await session.isSignedIn())) return fail('signed-out')
+  return rooms.start(tabId)
+}
+
+async function partyJoinRequest(tabId: number, url: string, code: string, confirm: boolean) {
+  if (!(await session.isSignedIn())) return fail('signed-out')
+  return rooms.joinRequest(tabId, url, code, confirm)
+}
+
 export const services: Services = {
   pushProgress,
   currentEpisode,
@@ -260,4 +336,9 @@ export const services: Services = {
   show,
   getSettings,
   setSettings,
+  startParty,
+  leaveParty: (tabId) => rooms.leave(tabId),
+  partyForTab: (tabId) => rooms.viewFor(tabId),
+  partyJoinRequest,
+  reportPartyAction: (tabId, action) => rooms.report(tabId, action),
 }

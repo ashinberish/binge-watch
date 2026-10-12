@@ -10,6 +10,7 @@ export type ShowRead = Schemas['ShowRead']
 export type ContinueWatchingItem = Schemas['ContinueWatchingItem']
 export type StreakRead = Schemas['StreakRead']
 export type ProfileId = ProfileRead['id']
+export type PartyRead = Schemas['PartyRead']
 
 interface AuthBridge {
   getAccessToken: () => string | null

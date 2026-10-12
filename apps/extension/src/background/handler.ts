@@ -2,6 +2,8 @@ import type { PlaybackSnapshot } from '../adapters/types'
 import { adapterFor } from '../adapters/registry'
 import { fail } from '../lib/result'
 import type { AnyReply, Message, ReplyOf, Settings } from '../messaging/protocol'
+import type { LocalAction } from '../party/engine'
+import { isControlAction } from '../party/protocol'
 
 /** Everything the service worker can do, one method per message. */
 export interface Services {
@@ -22,12 +24,33 @@ export interface Services {
   show(showId: string): Promise<ReplyOf<'show:get'>>
   getSettings(): Promise<Settings>
   setSettings(settings: Partial<Settings>): Promise<Settings>
+  startParty(tabId: number): Promise<ReplyOf<'party:start'>>
+  leaveParty(tabId: number): Promise<void>
+  partyForTab(tabId: number): Promise<ReplyOf<'party:get-for-tab'>>
+  partyJoinRequest(
+    tabId: number,
+    tabUrl: string,
+    code: string,
+    confirm: boolean,
+  ): Promise<ReplyOf<'party:join-request'>>
+  reportPartyAction(tabId: number, action: LocalAction): Promise<boolean>
 }
 
 export type Sender = Pick<chrome.runtime.MessageSender, 'tab' | 'url'>
 
 /** Messages a content script on a supported player may send. Everything else is extension pages only. */
-const FROM_CONTENT = new Set<Message['type']>(['progress', 'episode:current', 'settings:get'])
+const FROM_CONTENT = new Set<Message['type']>([
+  'progress',
+  'episode:current',
+  'settings:get',
+  'party:report',
+  'party:join-request',
+  'party:get-for-tab',
+])
+
+const PARTY_CODE = /^[A-Za-z0-9_-]{4,64}$/
+/** Browsers clamp playbackRate to roughly this range. */
+const MAX_RATE = 16
 
 function isMessage(value: unknown): value is Message {
   return (
@@ -49,6 +72,18 @@ function isSnapshot(value: unknown): value is PlaybackSnapshot {
   )
 }
 
+/** A reported play/pause/seek, checked field by field (the content script is not trusted). */
+function isValidAction(action: unknown, position: unknown, rate: unknown): boolean {
+  return (
+    isControlAction(action) &&
+    typeof position === 'number' &&
+    Number.isFinite(position) &&
+    position >= 0 &&
+    (rate === undefined ||
+      (typeof rate === 'number' && Number.isFinite(rate) && rate > 0 && rate <= MAX_RATE))
+  )
+}
+
 /**
  * Routes a runtime message to a service after checking who sent it. Extension pages
  * are recognised by their chrome-extension:// origin; content scripts by a tab on a
@@ -63,6 +98,14 @@ export function createHandler(services: Services, extensionOrigin: string) {
     const id = sender.tab?.id
     if (!url || id === undefined || adapterFor(url)?.id !== adapter) return null
     return id
+  }
+
+  /** The tab a party message is about: any tab for extension pages, else the sender's own player tab. */
+  const partyTab = (sender: Sender, tabId: unknown) => {
+    if (fromExtensionPage(sender)) return typeof tabId === 'number' ? tabId : null
+    const url = sender.tab?.url
+    const id = sender.tab?.id
+    return url && id !== undefined && adapterFor(url) ? id : null
   }
 
   return async function handle(message: unknown, sender: Sender): Promise<AnyReply | undefined> {
@@ -108,6 +151,39 @@ export function createHandler(services: Services, extensionOrigin: string) {
         return services.show(message.showId)
       case 'settings:set':
         return services.setSettings(message.settings ?? {})
+      case 'party:report': {
+        const tabId = playerTab(sender, message.adapter)
+        if (tabId === null || !isValidAction(message.action, message.position, message.rate)) {
+          return { ok: false }
+        }
+        return {
+          ok: await services.reportPartyAction(tabId, {
+            action: message.action,
+            position: message.position,
+            rate: message.rate ?? 1,
+          }),
+        }
+      }
+      case 'party:join-request': {
+        const tabId = playerTab(sender, message.adapter)
+        const tabUrl = sender.tab?.url
+        if (tabId === null || !tabUrl) return fail('rejected')
+        if (typeof message.code !== 'string' || !PARTY_CODE.test(message.code)) {
+          return fail('rejected')
+        }
+        return services.partyJoinRequest(tabId, tabUrl, message.code, message.confirm === true)
+      }
+      case 'party:get-for-tab': {
+        const tabId = partyTab(sender, message.tabId)
+        return tabId === null ? null : services.partyForTab(tabId)
+      }
+      case 'party:start':
+        if (typeof message.tabId !== 'number') return fail('rejected')
+        return services.startParty(message.tabId)
+      case 'party:leave':
+        if (typeof message.tabId !== 'number') return { ok: false }
+        await services.leaveParty(message.tabId)
+        return { ok: true }
       default:
         return undefined
     }

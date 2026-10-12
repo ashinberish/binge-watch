@@ -1,4 +1,5 @@
 import type { MatchResult } from '../../src/lib/types'
+import type { PlaybackState } from '../../src/party/protocol'
 import type { QueuedProgress } from '../../src/storage'
 
 export const item = (id: string, position = 60, queuedAt = 1): QueuedProgress => ({
@@ -33,4 +34,15 @@ export const match = (episodeId: string, next = true): MatchResult => ({
         duration_seconds: 3000,
       }
     : null,
+})
+
+/** A room state: playing from 100 s, set at server time 1000 s. */
+export const playbackState = (overrides: Partial<PlaybackState> = {}): PlaybackState => ({
+  paused: false,
+  position: 100,
+  rate: 1,
+  updated_at: 1_000,
+  seq: 1,
+  by: null,
+  ...overrides,
 })
