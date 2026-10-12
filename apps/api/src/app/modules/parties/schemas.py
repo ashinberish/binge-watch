@@ -1,5 +1,6 @@
 """HTTP and WebSocket payloads for watch parties."""
 
+import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal
@@ -12,6 +13,8 @@ PROVIDER_PATTERN = r"^[a-z0-9-]{1,32}$"
 MIN_RATE = 0.25
 MAX_RATE = 4.0
 DEFAULT_RATE = 1.0
+
+CHAT_MAX_CHARS = 500
 
 
 # --- HTTP -------------------------------------------------------------------------------
@@ -114,7 +117,84 @@ class PingMessage(BaseModel):
     type: Literal["ping"]
 
 
-ClientMessage = Annotated[AuthMessage | ControlMessage | PingMessage, Field(discriminator="type")]
-client_message_adapter: TypeAdapter[AuthMessage | ControlMessage | PingMessage] = TypeAdapter(
-    ClientMessage
+PresenceStatus = Literal["watching", "buffering", "ad", "away"]
+ReactionKind = Literal["heart", "laugh", "wow", "fire", "clap", "sad"]
+
+DEFAULT_PRESENCE_STATUS: PresenceStatus = "watching"
+
+_WHITESPACE = re.compile(r"\s+")
+# C0/C1 controls, plus bidi embedding/override/isolate marks (text-direction spoofing).
+# Zero-width joiners stay: emoji sequences need them.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+
+
+def clean_chat_text(text: str) -> str:
+    """Collapse whitespace runs (newlines included) to one space, drop control
+    characters and trim. Raises ValueError unless 1..500 characters remain."""
+    cleaned = _CONTROL_CHARS.sub("", _WHITESPACE.sub(" ", text)).strip()
+    cleaned = _WHITESPACE.sub(" ", cleaned)
+    if not cleaned:
+        raise ValueError("message is empty")
+    if len(cleaned) > CHAT_MAX_CHARS:
+        raise ValueError(f"message is longer than {CHAT_MAX_CHARS} characters")
+    return cleaned
+
+
+class PresenceMember(BaseModel):
+    """One connected viewer in the live member list (``Member`` in the wire docs)."""
+
+    id: uuid.UUID
+    display_name: str
+    is_host: bool
+    status: PresenceStatus = DEFAULT_PRESENCE_STATUS
+    joined_at: float = Field(description="Server epoch seconds of the first connect.")
+
+
+def sort_members(members: list[PresenceMember]) -> list[PresenceMember]:
+    """Host first, then by first-connect time (user id breaks ties)."""
+    return sorted(members, key=lambda m: (not m.is_host, m.joined_at, str(m.id)))
+
+
+class ChatMessage(BaseModel):
+    """A chat line as broadcast and kept in the (ephemeral) room history."""
+
+    id: str
+    user: PartyUser
+    text: str
+    sent_at: float = Field(description="Server epoch seconds.")
+
+
+class Reaction(BaseModel):
+    """A one-off emoji reaction (broadcast as ``{"type": "reaction", ...}``, never stored)."""
+
+    id: str
+    kind: ReactionKind
+    user: PartyUser
+    at: float = Field(description="Server epoch seconds.")
+
+
+class StatusMessage(BaseModel):
+    type: Literal["status"]
+    status: PresenceStatus
+
+
+class ChatSendMessage(BaseModel):
+    type: Literal["chat"]
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def _clean(cls, value: str) -> str:
+        return clean_chat_text(value)
+
+
+class ReactMessage(BaseModel):
+    type: Literal["react"]
+    kind: ReactionKind
+
+
+AnyClientMessage = (
+    AuthMessage | ControlMessage | PingMessage | StatusMessage | ChatSendMessage | ReactMessage
 )
+ClientMessage = Annotated[AnyClientMessage, Field(discriminator="type")]
+client_message_adapter: TypeAdapter[AnyClientMessage] = TypeAdapter(ClientMessage)

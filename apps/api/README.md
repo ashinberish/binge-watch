@@ -115,9 +115,9 @@ tests/                 unit/ and integration/
 
 ## Watch parties
 
-Synced playback for several viewers. First version: play/pause/seek sync and a member count
-(no chat, reactions or presence list). **Everyone** in the room can control playback; the
-server orders controls and the last one wins.
+Synced playback for several viewers, with a live member list (presence), chat and emoji
+reactions. **Everyone** in the room can control playback; the server orders controls and the
+last one wins.
 
 ### HTTP (`/api/v1`, bearer auth)
 
@@ -146,7 +146,9 @@ set one): authentication is the first message.
 3. Party unknown, ended or expired → close `4404`. Caller is not a member (call
    `POST /parties/{code}/join` first) → close `4403`.
 4. Server sends
-   `{"type":"welcome","state":PlaybackState,"members":int,"you":{"id","display_name"}}`.
+   `{"type":"welcome","state":PlaybackState,"members":int,"you":{"id","display_name"},
+   "members_list":[Member],"chat":[ChatMessage]}` (`chat` is the room's last ≤ 50 messages,
+   oldest first).
 
 `PlaybackState = {"paused":bool, "position":float, "rate":float, "updated_at":float,
 "seq":int, "by":{"id","display_name"}|null}` — `position` in seconds at `updated_at` (server
@@ -154,26 +156,60 @@ epoch seconds). A fresh room is `{"paused":true,"position":0,"rate":1,"updated_a
 
 Expected position at server time `now`: `position + (paused ? 0 : (now - updated_at) * rate)`.
 
+`Member = {"id", "display_name", "is_host":bool, "status":"watching"|"buffering"|"ad"|"away",
+"joined_at":float}` — `joined_at` is the server epoch of the user's first connection to this
+party (kept across reconnects). Lists are sorted host first, then by `joined_at`. A user with
+several sockets is listed once; their status is the last one any of their sockets sent. A
+user's status starts as `watching` when they go from no sockets to one.
+
+`ChatMessage = {"id":str, "user":{"id","display_name"}, "text":str, "sent_at":float}` (`id`
+is 32 hex characters; `sent_at` server epoch seconds).
+
 | Client → server | Server behaviour |
 | --- | --- |
 | `{"type":"control","action":"play"\|"pause"\|"seek","position":float≥0,"rate"?:0.25–4}` | `play` → `paused=false`, `pause` → `paused=true`, `seek` keeps `paused`. `position` from the message, `rate` from the message or unchanged, `updated_at` = server now, `seq` + 1, `by` = sender. Broadcasts `{"type":"state","state":PlaybackState}` to **all** sockets, sender included (use `seq` to drop your own echo / stale states). Max 10 controls/s per socket (burst 10); excess silently dropped. |
 | `{"type":"ping"}` (every ~20 s) | `{"type":"pong","server_time":float}` — use for clock offset. |
+| `{"type":"status","status":"watching"\|"buffering"\|"ad"\|"away"}` | Sets the sender's status (per user, not per socket); a `presence` frame follows if it changed. |
+| `{"type":"chat","text":str}` | Text is cleaned (whitespace runs incl. newlines → one space, control and bidi-override characters removed, trimmed) and must then be 1–500 characters, else `error`. Max 5 messages per 5 s per user (all their sockets); excess → `{"type":"error","detail":"You're sending messages too quickly."}`. Broadcasts `{"type":"chat","message":ChatMessage}` to all sockets, sender included. |
+| `{"type":"react","kind":"heart"\|"laugh"\|"wow"\|"fire"\|"clap"\|"sad"}` | Broadcasts `{"type":"reaction","id":str,"kind","user":{"id","display_name"},"at":float}` to all sockets, sender included. Not stored. Max 3 per second per user; excess silently dropped. |
 | anything malformed (bad JSON, unknown type, invalid fields, binary frame, > 8 KiB, a second `auth`) | `{"type":"error","detail":"..."}`; the socket stays open. |
 
 | Server → client | |
 | --- | --- |
 | `{"type":"members","count":int}` | Distinct users currently connected (a user's second tab doesn't count twice), sent on every connect/disconnect. |
+| `{"type":"presence","members":[Member]}` | The full member list, whenever someone joins, leaves or changes status. Changes within ~100 ms are coalesced into one frame, and an identical list may be re-sent; always replace your list with the latest frame. |
+| `{"type":"chat","message":ChatMessage}` | A new chat message. |
+| `{"type":"reaction",...}` | See `react` above. |
 | `{"type":"ended"}` then close `4410` | The party ended (last member left) or reached `expires_at`. |
 
 Other close codes: `4408` no message for 60 s (keep pinging), `1012` server shutting down
 (reconnect), `1011` internal error.
 
+Control rate limits are per socket; chat and reaction limits are per user and kept in the hub,
+so they hold across tabs and API processes.
+
+**Chat is ephemeral by design.** Messages live only in the hub (the last 50 per party) and
+disappear when the party ends or its TTL runs out. They are never written to Postgres.
+
 **Scale-out.** The handler only talks to a `PartyHub` (`modules/parties/hub.py`).
-`RedisPartyHub` (`APP_PARTY_HUB=redis`, default) keeps state and connected-member counts in
-Redis hashes (`nightreel:party:{code}:state|members`, TTL = party TTL) and mutates them with
-Lua scripts that also `PUBLISH` the resulting event on `nightreel:party:{code}:events`, so
-`seq` order equals broadcast order across processes; each API process uses one pub/sub
-connection and fans out locally. `InMemoryPartyHub` (`APP_PARTY_HUB=memory`) is for tests and
+`RedisPartyHub` (`APP_PARTY_HUB=redis`, default) keeps the party's realtime data under
+`nightreel:party:{code}:…` (TTL = party TTL): `state` (hash), `members` (hash
+`{user_id}|{proc_id}` → open sockets), `presence` / `status` / `joined` (hashes keyed by user
+id), `chat` (list, newest first, `LTRIM`med to 50) and short-lived per-user `rate:chat|react:{user_id}`
+lists. Every mutation is a Lua script that also `PUBLISH`es the resulting event on
+`nightreel:party:{code}:events`, so `seq` order equals broadcast order across processes and a
+chat message is stored and broadcast in one step. Each API process uses one pub/sub
+connection and fans out locally. Presence changes are published as an internal
+`presence_changed` signal; each process then re-reads the list (coalescing signals for
+~100 ms) and sends `presence` frames to its own sockets.
+
+**Crash recovery.** Each API process has an id and keeps `nightreel:party:proc:{proc_id}`
+alive (refreshed every 15 s, TTL 45 s; deleted on graceful shutdown). Connections are stored
+with the id of the process holding them. Counts and member lists skip connections whose
+process key has expired. The next connect or disconnect in that party, or the 15 s heartbeat
+sweep of any process with sockets in it, deletes those connections and re-broadcasts
+`members` and `presence`. So viewers of a crashed process disappear within about a minute
+instead of staying until the party TTL. `InMemoryPartyHub` (`APP_PARTY_HUB=memory`) is for tests and
 single-process dev. The hub is created in `create_app` and closed in the lifespan, which
 closes open party sockets with `1012`. Hub tests run against memory and `fakeredis`; set
 `APP_TEST_REDIS_URL=redis://localhost:6379/15` to also run them against a real Redis

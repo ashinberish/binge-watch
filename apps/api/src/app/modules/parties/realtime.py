@@ -1,4 +1,5 @@
-"""Watch-party WebSocket: in-band auth, then playback control relayed through the hub.
+"""Watch-party WebSocket: in-band auth, then playback control, presence, chat and
+reactions relayed through the hub.
 
 See the "Watch parties" section of the README for the wire protocol.
 """
@@ -8,6 +9,7 @@ import contextlib
 import json
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
@@ -27,9 +29,14 @@ from app.modules.parties.hub import Event, PartyHub, Subscription
 from app.modules.parties.repository import PartyRepository
 from app.modules.parties.schemas import (
     AuthMessage,
+    ChatMessage,
+    ChatSendMessage,
     ControlMessage,
     PartyUser,
     PingMessage,
+    Reaction,
+    ReactMessage,
+    StatusMessage,
     client_message_adapter,
 )
 from app.modules.parties.service import PartyService
@@ -41,6 +48,13 @@ AUTH_TIMEOUT_SECONDS = 5.0
 IDLE_TIMEOUT_SECONDS = 60.0
 CONTROL_RATE_PER_SECOND = 10.0
 CONTROL_BURST = 10.0
+# Chat and reaction limits are per user (across their sockets and API processes) and
+# enforced by the hub; the control bucket above is per socket.
+CHAT_RATE_LIMIT = 5
+CHAT_RATE_WINDOW_SECONDS = 5.0
+REACT_RATE_LIMIT = 3
+REACT_RATE_WINDOW_SECONDS = 1.0
+CHAT_RATE_LIMITED_DETAIL = "You're sending messages too quickly."
 MAX_MESSAGE_CHARS = 8192
 
 
@@ -109,6 +123,7 @@ class _Admission:
     user: PartyUser
     code: str
     expires_at: datetime
+    is_host: bool
 
 
 class PartyConnection:
@@ -175,12 +190,13 @@ class PartyConnection:
                 user=PartyUser(id=user.id, display_name=user.display_name),
                 code=party.code,
                 expires_at=party.expires_at,
+                is_host=party.host_user_id == user.id,
             )
 
     async def _run(self, admission: _Admission) -> None:
         code, me = admission.code, admission.user
         log = logger.bind(party_code=code, user_id=str(me.id))
-        await self.hub.connect(code, me.id)
+        await self.hub.connect(code, me, is_host=admission.is_host, now=epoch_seconds())
         log.info("parties.ws_connected")
         outcome: Close | None = None
         try:
@@ -193,6 +209,12 @@ class PartyConnection:
                         "state": state.model_dump(mode="json"),
                         "members": await self.hub.member_count(code),
                         "you": me.model_dump(mode="json"),
+                        "members_list": [
+                            m.model_dump(mode="json") for m in await self.hub.presence(code)
+                        ],
+                        "chat": [
+                            m.model_dump(mode="json") for m in await self.hub.chat_history(code)
+                        ],
                     }
                 )
                 outcome = await self._pump(code, me, sub, admission.expires_at)
@@ -256,7 +278,26 @@ class PartyConnection:
                         by=me,
                         now=epoch_seconds(),
                     )
-            else:
+            elif isinstance(message, StatusMessage):
+                await self.hub.set_status(code, me.id, message.status)
+            elif isinstance(message, ChatSendMessage):
+                chat = ChatMessage(
+                    id=uuid.uuid4().hex, user=me, text=message.text, sent_at=epoch_seconds()
+                )
+                posted = await self.hub.post_chat(
+                    code, chat, limit=CHAT_RATE_LIMIT, window=CHAT_RATE_WINDOW_SECONDS
+                )
+                if not posted:
+                    await self._error(CHAT_RATE_LIMITED_DETAIL)
+            elif isinstance(message, ReactMessage):
+                reaction = Reaction(
+                    id=uuid.uuid4().hex, kind=message.kind, user=me, at=epoch_seconds()
+                )
+                # Over the limit: silently dropped, like excess controls.
+                await self.hub.react(
+                    code, reaction, limit=REACT_RATE_LIMIT, window=REACT_RATE_WINDOW_SECONDS
+                )
+            elif isinstance(message, AuthMessage):
                 await self._error("already authenticated")
 
     async def _forward_events(self, sub: Subscription) -> Close:
@@ -271,7 +312,7 @@ class PartyConnection:
                     continue  # already reflected in the welcome or a later state
                 self._last_seq = seq
                 await self._send(event)
-            elif kind == "members":
+            elif kind in {"members", "presence", "chat", "reaction"}:
                 await self._send(event)
             elif kind == "ended":
                 await self._send(event)
