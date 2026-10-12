@@ -1,59 +1,54 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--nr-color-surface);
 }
 
-.nr-season {
-  display: grid;
-  gap: var(--nr-space-2);
-}
-
-.nr-season__title {
-  margin: 0;
-  font: var(--nr-type-label);
-  letter-spacing: var(--nr-tracking-label);
-  color: var(--nr-color-ink-muted);
-}
-
-.nr-episodes {
-  display: grid;
-  gap: var(--nr-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.nr-episodes__item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+/* In a party the panel fills the window so the chat can use every pixel of height. */
+.nr-panel--fill {
+  box-sizing: border-box;
+  height: 100%;
   gap: var(--nr-space-3);
-  align-items: baseline;
-  padding: var(--nr-space-2) var(--nr-space-3);
-  border-radius: var(--nr-radius-md);
 }
 
-.nr-episodes__item[aria-current='true'] {
-  background: var(--nr-color-surface-raised);
-  box-shadow: inset 2px 0 0 var(--nr-color-brand);
+.nr-panel__tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.nr-episodes__label,
-.nr-episodes__meta {
-  color: var(--nr-color-ink-muted);
-  font: var(--nr-type-caption);
-  letter-spacing: var(--nr-tracking-caption);
-  font-variant-numeric: tabular-nums;
+.nr-panel__tab {
+  padding-top: var(--nr-space-4);
 }
 
-.nr-episodes__title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.nr-panel__tab--chat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.nr-panel__tab[hidden] {
+  display: none;
 }
 
 .nr-tab-count {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: var(--nr-space-2);
+  padding: 0 var(--nr-space-1);
+  border-radius: var(--nr-radius-pill);
+  background: var(--nr-color-surface-overlay);
   color: var(--nr-color-ink-muted);
+  font: var(--nr-type-caption);
   font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 /* Party tab */
@@ -65,7 +60,7 @@ body {
 
 .nr-members {
   display: grid;
-  gap: var(--nr-space-2);
+  gap: var(--nr-space-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -113,18 +108,35 @@ body {
   letter-spacing: var(--nr-tracking-caption);
 }
 
+.nr-room__chat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .nr-chat {
   position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .nr-chat__log {
-  max-height: 50vh;
-  min-height: 160px;
+  flex: 1;
+  min-height: 120px;
   overflow-y: auto;
-  padding: var(--nr-space-2);
-  border: 1px solid var(--nr-color-border);
-  border-radius: var(--nr-radius-md);
-  background: var(--nr-color-surface);
+  padding: var(--nr-space-1) 0;
+}
+
+/* Reactions and the message box, pinned under the log. */
+.nr-room__compose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nr-space-2);
+  padding-top: var(--nr-space-3);
+  border-top: 1px solid var(--nr-color-surface-overlay);
 }
 
 .nr-chat__log:focus-visible {
@@ -201,8 +213,7 @@ body {
 
 .nr-reaction-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--nr-space-1);
+  justify-content: space-between;
 }
 
 .nr-composer {

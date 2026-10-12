@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { failureMessage } from '../../lib/result'
 import { onBroadcast, send, type PartyTabView } from '../../messaging/protocol'
 import { useAsync } from '../../messaging/useAsync'
-import { membersLabel } from './overlay'
 
 async function copy(text: string): Promise<boolean> {
   try {
@@ -109,9 +108,9 @@ export function PartyPanel({ tabId }: { tabId: number | null }) {
   if (party) {
     return (
       <section className="nr-panel__section nr-party" aria-labelledby="party-title">
-        <p id="party-title" className="nr-party__title">
-          {membersLabel(party.memberCount)}
-        </p>
+        <h2 id="party-title" className="nr-party__title">
+          Invite friends
+        </h2>
         {party.status === 'reconnecting' ? <p className="nr-panel__muted">Reconnecting…</p> : null}
         <label className="nr-party__label" htmlFor="party-link">
           Invite link
@@ -139,9 +138,15 @@ export function PartyPanel({ tabId }: { tabId: number | null }) {
 
   if (!canStart) return status
   return (
-    <section className="nr-panel__section nr-party" aria-label="Watch party">
+    <section className="nr-panel__section nr-party nr-party--start" aria-labelledby="party-start">
+      <h2 id="party-start" className="nr-party__title">
+        Watch together
+      </h2>
+      <p className="nr-panel__muted">
+        Invite friends to this episode. Play, pause and seek stay in sync for everyone.
+      </p>
       <div className="nr-party__actions">
-        <Button size="sm" variant="secondary" loading={busy} onClick={() => void start()}>
+        <Button size="sm" variant="primary" loading={busy} onClick={() => void start()}>
           Start a watch party
         </Button>
       </div>

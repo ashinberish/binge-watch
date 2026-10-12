@@ -16,9 +16,8 @@ import {
 import { useEffect, useState } from 'react'
 
 import { ContinueWatchingList } from '../../src/features/continue-watching/ContinueWatchingList'
-import { EpisodeList } from '../../src/features/episodes/EpisodeList'
 import { PartyPanel } from '../../src/features/party/PartyPanel'
-import { PartyRoom } from '../../src/features/party/PartyRoom'
+import { PartyChat, PartyMembers } from '../../src/features/party/PartyRoom'
 import {
   usePageVisible,
   usePanelPresence,
@@ -33,7 +32,7 @@ import type { Profile } from '../../src/lib/types'
 import { onBroadcast, send, type SessionState } from '../../src/messaging/protocol'
 import { useAsync } from '../../src/messaging/useAsync'
 
-type PanelTab = 'home' | 'party' | 'episodes'
+type PanelTab = 'home' | 'chat' | 'members'
 
 async function activeTabId(): Promise<number | null> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -155,42 +154,19 @@ function useActiveTab() {
 
 function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const tabId = useActiveTab()
-  const [version, setVersion] = useState(0)
   const [panelTab, setPanelTab] = useState<PanelTab>('home')
   const [profiles, reloadProfiles] = useAsync(() => send({ type: 'profiles:list' }), [])
   const room = usePartyRoom(tabId)
   const visible = usePageVisible()
   const party = room.view
-  usePanelPresence(tabId, party !== null && panelTab === 'party' && visible)
+  // "Reading the chat" is what clears unread messages and hides bubbles over the player.
+  usePanelPresence(tabId, party !== null && panelTab === 'chat' && visible)
 
-  useEffect(
-    () =>
-      onBroadcast((message) => {
-        if (message.type === 'episode:changed' && message.tabId === tabId) {
-          setVersion((v) => v + 1)
-        }
-      }),
-    [tabId],
-  )
-
-  // Open the Party tab when this tab joins a party; fall back to Home when it ends.
+  // Open the chat when this tab joins a party; fall back to Home when it ends.
   const partyCode = party?.code ?? null
   useEffect(() => {
-    if (partyCode) setPanelTab('party')
-    else setPanelTab((tab) => (tab === 'party' ? 'home' : tab))
+    setPanelTab(partyCode ? 'chat' : 'home')
   }, [partyCode])
-
-  const [episode] = useAsync(async () => {
-    const match = tabId === null ? null : await send({ type: 'episode:for-tab', tabId })
-    if (!match) return null
-    const show = await send({ type: 'show:get', showId: match.show_id })
-    return { match, show }
-  }, [tabId, version])
-  const current = episode.status === 'done' ? episode.data : null
-
-  useEffect(() => {
-    if (!current) setPanelTab((tab) => (tab === 'episodes' ? 'home' : tab))
-  }, [current])
 
   const listed = profiles.status === 'done' && profiles.data.ok ? profiles.data.data : null
   const activeProfileId = listed?.activeProfileId ?? null
@@ -228,59 +204,62 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
             onSelect={(id) => void select(id)}
           />
         ) : null}
-        <PartyPanel tabId={tabId} />
+        {party ? null : <PartyPanel tabId={tabId} />}
         <Activity profileId={activeProfileId} />
       </>
     )
   }
 
-  const unread = party && panelTab !== 'party' ? party.unread : 0
+  const unread = party && panelTab !== 'chat' ? party.unread : 0
+
+  const header = <Header account={{ profile: active, onSignOut: () => void signOut() }} />
+
+  if (!party) {
+    return (
+      <main className="nr-panel">
+        {header}
+        <div className="nr-panel__stack">{home}</div>
+      </main>
+    )
+  }
 
   return (
-    <main className="nr-panel">
-      <Header account={{ profile: active, onSignOut: () => void signOut() }} />
+    <main className="nr-panel nr-panel--fill">
+      {header}
       <Tabs
         value={panelTab}
         onValueChange={(value) => setPanelTab(value as PanelTab)}
         className="nr-panel__tabs"
       >
         <TabsList aria-label="Nightreel">
+          <TabsTrigger value="chat">
+            Chat
+            {unread > 0 ? <span className="nr-tab-count">{unread}</span> : null}
+          </TabsTrigger>
+          <TabsTrigger value="members">
+            Members
+            <span className="nr-tab-count">{party.members.length || party.memberCount}</span>
+          </TabsTrigger>
           <TabsTrigger value="home">Home</TabsTrigger>
-          {party ? (
-            <TabsTrigger value="party">
-              Party
-              {unread > 0 ? <span className="nr-tab-count"> · {unread} new</span> : null}
-            </TabsTrigger>
-          ) : null}
-          {current ? <TabsTrigger value="episodes">Episodes</TabsTrigger> : null}
         </TabsList>
-        <TabsContent value="home" className="nr-panel__stack">
+        <TabsContent value="chat" className="nr-panel__tab nr-panel__tab--chat">
+          <PartyChat
+            youId={party.youId}
+            chat={party.chat}
+            connection={party.status === 'invited' ? 'connecting' : party.status}
+            error={room.error}
+            onSend={room.sendChat}
+            onReact={room.react}
+            onClearError={room.clearError}
+          />
+        </TabsContent>
+        <TabsContent value="members" className="nr-panel__tab nr-panel__stack">
+          <PartyMembers members={party.members} youId={party.youId} />
+          <PartyPanel tabId={tabId} />
+        </TabsContent>
+        <TabsContent value="home" className="nr-panel__tab nr-panel__stack">
           {home}
         </TabsContent>
-        {party ? (
-          <TabsContent value="party">
-            <PartyRoom
-              members={party.members}
-              youId={party.youId}
-              chat={party.chat}
-              connection={party.status === 'invited' ? 'connecting' : party.status}
-              error={room.error}
-              onSend={room.sendChat}
-              onReact={room.react}
-              onClearError={room.clearError}
-            />
-          </TabsContent>
-        ) : null}
-        {current ? (
-          <TabsContent value="episodes" className="nr-panel__stack">
-            <h1 className="nr-panel__title">{current.match.show_title}</h1>
-            {current.show.ok ? (
-              <EpisodeList show={current.show.data} currentEpisodeId={current.match.episode_id} />
-            ) : (
-              <p className="nr-panel__error">{failureMessage(current.show.error)}</p>
-            )}
-          </TabsContent>
-        ) : null}
       </Tabs>
     </main>
   )

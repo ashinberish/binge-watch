@@ -127,9 +127,16 @@
 }
 
 /* Watch party (popup) */
-.nr-party {
-  padding-bottom: var(--nr-space-3);
-  border-bottom: 1px solid var(--nr-color-border);
+/* Under the member list: the invite link and Leave, set apart by a hairline. */
+.nr-panel__tab .nr-party {
+  padding-top: var(--nr-space-4);
+  border-top: 1px solid var(--nr-color-surface-overlay);
+}
+
+.nr-party--start {
+  padding: var(--nr-space-4);
+  border-radius: var(--nr-radius-lg);
+  background: var(--nr-color-surface-raised);
 }
 
 .nr-party__title {

@@ -329,9 +329,10 @@ function ReactionBar({
 /** Refresh "3 min ago" labels this often. */
 const CLOCK_MS = 30_000
 
-/** The side panel's Party tab: who is here, the chat, and reactions. */
-export function PartyRoom({
-  members,
+export type PartyChatProps = Omit<PartyRoomProps, 'members'>
+
+/** The side panel's Chat tab: the log fills the height, reactions and the box sit at the bottom. */
+export function PartyChat({
   youId,
   chat,
   connection,
@@ -340,7 +341,7 @@ export function PartyRoom({
   onReact,
   onClearError,
   now = Date.now,
-}: PartyRoomProps) {
+}: PartyChatProps) {
   const [time, setTime] = useState(now)
   useEffect(() => {
     setTime(now())
@@ -349,18 +350,9 @@ export function PartyRoom({
   }, [now, chat])
 
   return (
-    <div className="nr-room">
-      <section className="nr-panel__section" aria-labelledby="room-members">
-        <h2 id="room-members" className="nr-season__title">
-          In the party
-        </h2>
-        <MemberList members={members} youId={youId} />
-      </section>
-      <section className="nr-panel__section nr-room__chat" aria-labelledby="room-chat">
-        <h2 id="room-chat" className="nr-season__title">
-          Chat
-        </h2>
-        <ChatLog messages={chat} youId={youId} now={time} />
+    <section className="nr-room__chat" aria-label="Chat">
+      <ChatLog messages={chat} youId={youId} now={time} />
+      <div className="nr-room__compose">
         <ReactionBar disabled={connection !== 'live'} onReact={onReact} />
         <Composer
           connection={connection}
@@ -368,7 +360,26 @@ export function PartyRoom({
           onSend={onSend}
           onClearError={onClearError}
         />
-      </section>
+      </div>
+    </section>
+  )
+}
+
+/** The side panel's Members tab list: who is here, with host and status. */
+export function PartyMembers({ members, youId }: { members: RoomMember[]; youId: string | null }) {
+  return (
+    <section className="nr-panel__section" aria-label="People in the party">
+      <MemberList members={members} youId={youId} />
+    </section>
+  )
+}
+
+/** Members and chat together, for places with room for both. */
+export function PartyRoom(props: PartyRoomProps) {
+  return (
+    <div className="nr-room">
+      <PartyMembers members={props.members} youId={props.youId} />
+      <PartyChat {...props} />
     </div>
   )
 }

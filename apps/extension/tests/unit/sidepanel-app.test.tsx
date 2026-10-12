@@ -55,21 +55,17 @@ describe('side panel', () => {
     await expectNoA11yViolations(container)
   })
 
-  it('shows Home with continue watching and the account menu when signed in', async () => {
+  it('shows continue watching and the account menu, without tabs, outside a party', async () => {
     answer(signedIn)
     const { container } = render(<App />)
-    expect((await screen.findByRole('tab', { name: 'Home' })).getAttribute('aria-selected')).toBe(
-      'true',
-    )
     expect(await screen.findByRole('heading', { name: 'Continue watching' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Account menu for Kai' })).toBeTruthy()
-    // No party and no matched episode on this tab: only Home is offered.
-    expect(screen.queryByRole('tab', { name: /Party/ })).toBeNull()
-    expect(screen.queryByRole('tab', { name: 'Episodes' })).toBeNull()
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.queryByRole('tab', { name: /Episodes/ })).toBeNull()
     await expectNoA11yViolations(container)
   })
 
-  it('opens the Party tab when this tab is in a party', async () => {
+  it('opens Chat in a party, with Members and Home beside it', async () => {
     answer(signedIn)
     partyView = {
       code: 'k3x9',
@@ -81,14 +77,21 @@ describe('side panel', () => {
       status: 'live',
       state: null,
       clockOffsetMs: 0,
-      members: [],
+      members: [
+        { id: 'u1', display_name: 'Kai', is_host: true, status: 'watching', joined_at: 1 },
+        { id: 'u2', display_name: 'Sam', is_host: false, status: 'away', joined_at: 2 },
+      ],
       youId: 'u1',
       chat: [],
       unread: 0,
     } as unknown as PartyTabView
-    render(<App />)
-    expect((await screen.findByRole('tab', { name: /Party/ })).getAttribute('aria-selected')).toBe(
-      'true',
-    )
+    const { container } = render(<App />)
+    const chat = await screen.findByRole('tab', { name: /Chat/ })
+    expect(chat.getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: /Members/ }).textContent).toContain('2')
+    expect(screen.getByRole('tab', { name: 'Home' })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: /Episodes/ })).toBeNull()
+    expect(screen.getByRole('log', { name: 'Chat messages' })).toBeTruthy()
+    await expectNoA11yViolations(container)
   })
 })
