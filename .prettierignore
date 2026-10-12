@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+dist
+.output
+.wxt
+storybook-static
+coverage
+apps/api
+packages/api-client/src/schema.d.ts

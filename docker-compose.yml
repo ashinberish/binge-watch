@@ -1,0 +1,48 @@
+name: binge-watch
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nightreel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nightreel}
+      POSTGRES_DB: ${POSTGRES_DB:-nightreel}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nightreel}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: apps/api
+    env_file:
+      - apps/api/.env.example
+    environment:
+      APP_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nightreel}:${POSTGRES_PASSWORD:-nightreel}@postgres:5432/${POSTGRES_DB:-nightreel}
+      APP_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["full"]
+
+volumes:
+  pgdata:
