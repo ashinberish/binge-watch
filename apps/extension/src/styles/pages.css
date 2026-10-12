@@ -17,12 +17,69 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 32px;
+  min-height: 44px;
+  margin-top: calc(-1 * var(--nr-space-2));
 }
 
 .nr-wordmark {
-  font: 700 20px/1 var(--nr-font-display);
+  font: 700 18px/1 var(--nr-font-display);
   text-transform: lowercase;
+}
+
+/* Hidden on screen, still read by screen readers. */
+.nr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Colour emoji (reactions). */
+.nr-emoji {
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* A quiet 28px round avatar (account menu, member list). Colours come in inline. */
+.nr-avatar.nr-avatar--soft {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-family: var(--nr-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* A quiet action that reads as text (e.g. "Leave party"). */
+.nr-text-button {
+  padding: var(--nr-space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-body-sm);
+  cursor: pointer;
+}
+
+.nr-text-button:hover {
+  color: var(--nr-color-ink);
+  text-decoration: underline;
+}
+
+.nr-text-button:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-text-button:disabled {
+  opacity: var(--nr-opacity-disabled);
+  pointer-events: none;
 }
 
 .nr-wordmark__dot {
@@ -31,7 +88,8 @@
 
 .nr-panel__title {
   margin: 0;
-  font: var(--nr-type-title-2);
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
 }
 
 .nr-panel__section {
@@ -99,8 +157,28 @@
   border-color: var(--nr-color-ink);
 }
 
-/* Continue watching rows: plain text, not links or buttons (no deep links yet). */
-.nr-cw {
+/* Watch history: plain rows (no deep links yet), grouped under small day captions. */
+.nr-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nr-space-4);
+}
+
+.nr-history__day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nr-space-2);
+}
+
+.nr-history__day-title {
+  margin: 0;
+  color: var(--nr-color-ink-subtle);
+  font: 600 11px / 16px var(--nr-font-sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nr-history__list {
   display: flex;
   flex-direction: column;
   gap: var(--nr-space-3);
@@ -109,21 +187,53 @@
   list-style: none;
 }
 
-.nr-cw__row {
+.nr-history__row {
   display: flex;
   flex-direction: column;
-  gap: var(--nr-space-1);
+  gap: 2px;
 }
 
-.nr-cw__show {
+.nr-history__show {
+  overflow: hidden;
   font: var(--nr-type-label);
   letter-spacing: var(--nr-tracking-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.nr-cw__meta {
+.nr-history__meta,
+.nr-history__left,
+.nr-history__done {
   color: var(--nr-color-ink-muted);
   font: var(--nr-type-caption);
   letter-spacing: var(--nr-tracking-caption);
+}
+
+.nr-history__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nr-history__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--nr-space-2);
+  margin-top: var(--nr-space-1);
+}
+
+.nr-history__progress .nr-progress {
+  flex: 1;
+}
+
+.nr-history__left {
+  flex: none;
+}
+
+.nr-history__done {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nr-space-1);
 }
 
 /* Watch party (popup) */
@@ -135,7 +245,7 @@
 
 .nr-party--start {
   padding: var(--nr-space-4);
-  border-radius: var(--nr-radius-lg);
+  border-radius: 12px;
   background: var(--nr-color-surface-raised);
 }
 
@@ -151,15 +261,24 @@
   letter-spacing: var(--nr-tracking-caption);
 }
 
+.nr-party__link-row {
+  display: flex;
+  align-items: center;
+  gap: var(--nr-space-2);
+}
+
 .nr-party__link {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  height: var(--nr-size-control-height-sm);
   box-sizing: border-box;
-  padding: var(--nr-space-2);
-  border: 1px solid var(--nr-color-border);
-  border-radius: var(--nr-radius-sm);
+  padding: 0 var(--nr-space-3);
+  border: 0;
+  border-radius: var(--nr-radius-pill);
   background: var(--nr-color-surface-raised);
-  color: var(--nr-color-ink);
+  color: var(--nr-color-ink-muted);
   font: var(--nr-type-caption);
+  text-overflow: ellipsis;
 }
 
 .nr-party__link:focus-visible {

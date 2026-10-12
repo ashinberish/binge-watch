@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   addChatMessage,
+  addSystemLine,
+  chatEntries,
   chatInputState,
   cleanChatText,
   emptyChatLog,
   markChatRead,
   mergeChatHistory,
   relativeTime,
+  SYSTEM_LINE_LIMIT,
   truncate,
   type ChatLog,
 } from '../../src/party/chat'
@@ -157,5 +160,45 @@ describe('chat bubbles over the player', () => {
     expect(toasts.current?.text).toBe('Sam: n0')
     toasts.clear()
     expect(toasts.current).toBeNull()
+  })
+})
+
+describe('chat entries', () => {
+  const line = (id: string, at: number) => ({ id, text: 'Sam switched to a new video', at })
+
+  it('groups one sender’s messages within two minutes under one head', () => {
+    const entries = chatEntries(
+      [
+        msg('a', sam, 1_000),
+        msg('b', sam, 1_060),
+        msg('c', sam, 1_200), // 140 s after the previous one
+        msg('d', kai, 1_210),
+        msg('e', kai, 1_220),
+      ],
+      [],
+      'u1',
+    )
+    expect(
+      entries.map((e) => (e.kind === 'message' ? `${e.message.id}:${e.head}:${e.own}` : e.kind)),
+    ).toEqual(['a:true:false', 'b:false:false', 'c:true:false', 'd:true:true', 'e:false:true'])
+  })
+
+  it('puts system lines in time order, and they break a group', () => {
+    const entries = chatEntries(
+      [msg('a', sam, 1_000), msg('b', sam, 1_030)],
+      [line('video-4', 1_010)],
+      'u1',
+    )
+    expect(
+      entries.map((e) => (e.kind === 'message' ? `${e.message.id}:${e.head}` : e.line.id)),
+    ).toEqual(['a:true', 'video-4', 'b:true'])
+  })
+
+  it('adds system lines once each and keeps the newest', () => {
+    let lines = addSystemLine([], line('x', 1))
+    expect(addSystemLine(lines, line('x', 2))).toBe(lines)
+    for (let i = 0; i < 30; i += 1) lines = addSystemLine(lines, line(`l${i}`, i))
+    expect(lines).toHaveLength(SYSTEM_LINE_LIMIT)
+    expect(lines.at(-1)?.id).toBe('l29')
   })
 })

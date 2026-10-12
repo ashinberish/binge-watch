@@ -117,7 +117,42 @@ describe('party protocol: presence, chat and reactions', () => {
     expect(frame({ type: 'welcome', state: playbackState(), members: 1, you: sam })).toMatchObject({
       members_list: [],
       chat: [],
+      video: null,
     })
+  })
+
+  it('reads the party’s current video from the welcome', () => {
+    const video = { watch_url: 'https://www.youtube.com/watch?v=abc123', provider: 'youtube' }
+    expect(
+      frame({ type: 'welcome', state: playbackState(), members: 1, you: sam, video }),
+    ).toMatchObject({ video: { ...video, episode_id: null } })
+    expect(
+      frame({ type: 'welcome', state: playbackState(), members: 1, you: sam, video: { x: 1 } }),
+    ).toMatchObject({ video: null })
+  })
+
+  it('parses video frames and rejects malformed ones', () => {
+    const video = {
+      watch_url: 'https://www.youtube.com/watch?v=abc123',
+      provider: 'youtube',
+      episode_id: 'e7',
+    }
+    expect(frame({ type: 'video', video, by: { ...sam, extra: 1 }, seq: 4 })).toEqual({
+      type: 'video',
+      video,
+      by: sam,
+      seq: 4,
+    })
+    expect(frame({ type: 'video', video: { ...video, episode_id: null }, seq: 5 })).toEqual({
+      type: 'video',
+      video: { ...video, episode_id: null },
+      by: null,
+      seq: 5,
+    })
+    expect(frame({ type: 'video', video: { ...video, watch_url: '' }, seq: 4 })).toBeNull()
+    expect(frame({ type: 'video', video: { ...video, provider: 3 }, seq: 4 })).toBeNull()
+    expect(frame({ type: 'video', video, seq: '4' })).toBeNull()
+    expect(frame({ type: 'video', seq: 4 })).toBeNull()
   })
 
   it('passes server errors on as sentences and still ignores unknown frames', () => {

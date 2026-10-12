@@ -37,6 +37,10 @@ export const youtube: PlayerAdapter = {
     const id = url.searchParams.get('v')
     return id && VIDEO_ID.test(id) ? `https://www.youtube.com/watch?v=${id}` : null
   },
+  externalId(watchUrl) {
+    const canonical = youtube.watchUrl(watchUrl)
+    return canonical ? new URL(canonical).searchParams.get('v') : null
+  },
   playNext(doc) {
     const next = doc.querySelector<HTMLElement>('.ytp-next-button')
     if (!next || next.getAttribute('aria-disabled') === 'true') return false

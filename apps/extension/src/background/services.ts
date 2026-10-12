@@ -2,20 +2,20 @@ import type { PlaybackSnapshot } from '../adapters/types'
 import { api, publicApi, session } from '../lib/api'
 import { connectUrl, parseCodeFromRedirect } from '../lib/auth-flow'
 import { env } from '../lib/env'
+import { adapters } from '../adapters/registry'
+import { HISTORY_PAGE_SIZE } from '../lib/history'
 import { fail, ok, request, type Result } from '../lib/result'
 import { normalizeSettings } from '../lib/settings'
-import type { MatchResult, Profile } from '../lib/types'
+import type { HistoryItem, MatchResult, Profile } from '../lib/types'
 import { broadcast, sendToTab, type SessionState, type Settings } from '../messaging/protocol'
 import { createPartyConnection, webSocketFactory } from '../party/connection'
 import { partySocketUrl } from '../party/protocol'
 import { createPartyRooms, type PartyApi } from '../party/rooms'
 import { localStore, serialized, sessionStore } from '../storage'
-import { cachedMatch, matchKey, writeCachedMatch } from '../sync/match-cache'
+import { cachedMatch, matchKey, readCachedMatch, writeCachedMatch } from '../sync/match-cache'
 import { clearQueue, createFlushScheduler, flush, push, type FlushDeps } from '../sync/queue'
 import type { Services } from './handler'
 import { createPanelTracker } from './panels'
-
-const CONTINUE_WATCHING_LIMIT = 5
 
 // ---------------------------------------------------------------------------
 // Session
@@ -125,15 +125,21 @@ async function withProfile<T>(run: (profileId: string) => Promise<Result<T>>): P
 // ---------------------------------------------------------------------------
 // History, streaks, catalog
 
-const continueWatching = () =>
-  withProfile(async (profileId) => {
-    const items = await request(() =>
-      api.GET('/api/v1/history/continue-watching', {
-        params: { query: { profile_id: profileId } },
+/** One page of the active profile's watch history, newest first, older than `before`. */
+const history = (before: string | null) =>
+  withProfile((profileId) =>
+    request<HistoryItem[]>(() =>
+      api.GET('/api/v1/history', {
+        params: {
+          query: {
+            profile_id: profileId,
+            limit: HISTORY_PAGE_SIZE,
+            ...(before ? { before } : {}),
+          },
+        },
       }),
-    )
-    return items.ok ? ok(items.data.slice(0, CONTINUE_WATCHING_LIMIT)) : items
-  })
+    ),
+  )
 
 const streak = () =>
   withProfile((profileId) =>
@@ -284,6 +290,17 @@ const partyApi: PartyApi = {
     request(() => api.POST('/api/v1/parties/{code}/leave', { params: { path: { code } } })),
 }
 
+/** The catalog episode for a watch URL, from the match cache only (no request). */
+async function episodeIdForUrl(provider: string, watchUrl: string): Promise<string | null> {
+  const externalId = adapters.find((a) => a.id === provider)?.externalId?.(watchUrl)
+  if (!externalId) return null
+  return (await readCachedMatch(matchKey(provider, externalId)))?.episode_id ?? null
+}
+
+async function navigateTab(tabId: number, url: string): Promise<void> {
+  await chrome.tabs.update(tabId, { url })
+}
+
 async function tabUrl(tabId: number): Promise<string | null> {
   try {
     return (await chrome.tabs.get(tabId)).url ?? null
@@ -314,6 +331,8 @@ export const rooms = createPartyRooms({
   panelFor: (tabId) => panels.viewFor(tabId),
   tabUrl,
   episodeIdForTab: async (tabId) => (await episodeForTab(tabId))?.episode_id ?? null,
+  episodeIdForUrl,
+  navigateTab,
   load: async () => (await sessionStore.get()).tabParties ?? {},
   save: (tabParties) => serialized(() => sessionStore.set({ tabParties })),
 })
@@ -348,7 +367,7 @@ export const services: Services = {
   signOut,
   listProfiles,
   setProfile,
-  continueWatching,
+  history,
   streak,
   episodeForTab,
   show,

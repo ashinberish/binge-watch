@@ -108,7 +108,12 @@ export default defineContentScript({
     }
     chrome.runtime.onMessage.addListener(onPartyMessage)
     ctx.onInvalidated(() => chrome.runtime.onMessage.removeListener(onPartyMessage))
-    ctx.addEventListener(window, 'wxt:locationchange', () => party.checkInvite())
+    // In-page navigation: an invite link, or another video (the party follows it; tick
+    // starts the sync engine afresh once the party's video is on the page).
+    ctx.addEventListener(window, 'wxt:locationchange', () => {
+      party.checkInvite()
+      party.tick()
+    })
     ctx.addEventListener(document, 'visibilitychange', () => party.visibilityChanged())
     for (const type of MEDIA_EVENTS) {
       ctx.addEventListener(document, type, (event) => party.mediaEvent(type, event.target), {

@@ -3,9 +3,8 @@ import { MessageCircle, SmilePlus } from 'lucide-react'
 import { useId, type CSSProperties } from 'react'
 
 import { REACTION_KINDS, type ReactionKind } from '../../party/protocol'
-import { reactionButtonLabel, type FloatingReaction } from '../../party/reactions'
+import { REACTION_EMOJI, reactionButtonLabel, type FloatingReaction } from '../../party/reactions'
 import type { PartyOverlayView, PillAnchor, PillChat, StageAnchor } from './overlay'
-import { REACTION_ICONS } from './reactionIcons'
 
 interface Props {
   view: PartyOverlayView
@@ -79,14 +78,17 @@ function ChatCorner({
           }}
         >
           {REACTION_KINDS.map((kind) => (
-            <IconButton
+            <button
               key={kind}
-              size="sm"
-              className="nr-party-pill__icon"
-              icon={REACTION_ICONS[kind]}
+              type="button"
+              className="nr-party-pill__emoji"
               aria-label={reactionButtonLabel(kind)}
               onClick={() => onReact?.(kind)}
-            />
+            >
+              <span className="nr-emoji" aria-hidden="true">
+                {REACTION_EMOJI[kind]}
+              </span>
+            </button>
           ))}
         </div>
       ) : null}
@@ -115,7 +117,7 @@ function FloatingReactions({
           className={`nr-reaction nr-reaction--${reaction.motion}`}
           style={{ right: `${reaction.offset}px` }}
         >
-          <Icon icon={REACTION_ICONS[reaction.kind]} size={28} className="nr-reaction__icon" />
+          <span className="nr-emoji nr-reaction__emoji">{REACTION_EMOJI[reaction.kind]}</span>
           <span className="nr-reaction__name">{reaction.name}</span>
         </span>
       ))}
@@ -201,6 +203,15 @@ export function PartyOverlay({
           {view.chat.hint ? (
             <p className="nr-party-bubble" style={bubbleStyle(view.anchor)} role="status">
               {view.chat.hint}
+            </p>
+          ) : view.chat.note ? (
+            <p
+              key={view.chat.note}
+              className="nr-party-bubble nr-party-bubble--note"
+              style={bubbleStyle(view.anchor)}
+              role="status"
+            >
+              {view.chat.note}
             </p>
           ) : view.chat.toast ? (
             <p

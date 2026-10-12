@@ -65,6 +65,14 @@ export interface Reaction {
   at: number
 }
 
+/** What the party is watching. The server keys it on the canonical `watch_url`. */
+export interface PartyVideo {
+  watch_url: string
+  provider: string
+  /** Catalog episode, when the client that set the video had matched it. */
+  episode_id: string | null
+}
+
 /** The server accepts 1–500 characters per chat message (after cleaning). */
 export const CHAT_MAX_LENGTH = 500
 /** The server keeps (and sends in the welcome) this many recent messages. */
@@ -80,8 +88,15 @@ export type ServerMessage =
       /** Empty when the server does not send them. */
       members_list: RoomMember[]
       chat: ChatMessage[]
+      /** The party's current video. Null when the server does not send it. */
+      video: PartyVideo | null
     }
   | { type: 'state'; state: PlaybackState }
+  /**
+   * Someone changed the party's video. The server resets playback and follows this with
+   * a `state` frame carrying the same `seq`.
+   */
+  | { type: 'video'; video: PartyVideo; by: PartyMember | null; seq: number }
   | { type: 'members'; count: number }
   | { type: 'pong'; server_time: number }
   | { type: 'ended' }
@@ -98,6 +113,12 @@ export type ClientMessage =
   | { type: 'status'; status: MemberStatus }
   | { type: 'chat'; text: string }
   | { type: 'react'; kind: ReactionKind }
+  | {
+      type: 'video'
+      watch_url: string
+      provider: string
+      episode_id: string | null
+    }
 
 /** Close codes the server uses on top of the standard ones. */
 export const CloseCode = {
@@ -185,6 +206,19 @@ function parseList<T>(value: unknown, parse: (item: unknown) => T | null): T[] |
   return out
 }
 
+export function parsePartyVideo(value: unknown): PartyVideo | null {
+  if (!isRecord(value)) return null
+  const { watch_url: watchUrl, provider, episode_id: episodeId } = value
+  if (typeof watchUrl !== 'string' || !watchUrl || typeof provider !== 'string' || !provider) {
+    return null
+  }
+  return {
+    watch_url: watchUrl,
+    provider,
+    episode_id: typeof episodeId === 'string' && episodeId ? episodeId : null,
+  }
+}
+
 export function isPlaybackState(value: unknown): value is PlaybackState {
   return (
     isRecord(value) &&
@@ -218,8 +252,19 @@ export function parseServerMessage(data: unknown): ServerMessage | null {
             you: userOf(value.you),
             members_list: parseList(value.members_list, parseRoomMember) ?? [],
             chat: (parseList(value.chat, parseChatMessage) ?? []).slice(-CHAT_HISTORY_LIMIT),
+            video: parsePartyVideo(value.video),
           }
         : null
+    case 'video': {
+      const video = parsePartyVideo(value.video)
+      if (!video || !isFiniteNumber(value.seq)) return null
+      return {
+        type: 'video',
+        video,
+        by: isMember(value.by) ? userOf(value.by) : null,
+        seq: value.seq,
+      }
+    }
     case 'state':
       return isPlaybackState(value.state)
         ? { type: 'state', state: { ...value.state, by: value.state.by ?? null } }

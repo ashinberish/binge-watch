@@ -1,5 +1,5 @@
 import { AVATAR_COLORS } from '@nightreel/shared'
-import { Avatar, Badge, Icon, IconButton, Input, type IconName } from '@nightreel/ui'
+import { Avatar, IconButton } from '@nightreel/ui'
 import { SendHorizontal } from 'lucide-react'
 import {
   useEffect,
@@ -7,11 +7,18 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type UIEvent,
 } from 'react'
 
-import { chatInputState, relativeTime } from '../../party/chat'
+import {
+  chatEntries,
+  chatInputState,
+  relativeTime,
+  type ChatEntry,
+  type SystemLine,
+} from '../../party/chat'
 import {
   CHAT_MAX_LENGTH,
   REACTION_KINDS,
@@ -20,10 +27,9 @@ import {
   type ReactionKind,
   type RoomMember,
 } from '../../party/protocol'
-import { reactionButtonLabel } from '../../party/reactions'
-import { REACTION_ICONS } from './reactionIcons'
+import { REACTION_EMOJI, reactionButtonLabel } from '../../party/reactions'
 
-/** The status words in the member list. The icon repeats the word; it never replaces it. */
+/** The status words in the member list. The dot repeats the word; it never replaces it. */
 export const STATUS_WORDS: Record<MemberStatus, string> = {
   watching: 'Watching',
   buffering: 'Buffering',
@@ -31,18 +37,22 @@ export const STATUS_WORDS: Record<MemberStatus, string> = {
   away: 'Away',
 }
 
-const STATUS_ICONS: Record<MemberStatus, IconName> = {
-  watching: 'eye',
-  buffering: 'loader',
-  ad: 'tv',
-  away: 'moon',
-}
-
 /** A stable avatar colour per member, from the profile palette. */
 export function memberColor(id: string): string {
   let hash = 0
   for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) | 0
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? AVATAR_COLORS[0]
+}
+
+/**
+ * A quiet 28px avatar: the person's colour at low strength behind their initials, so a
+ * row of them does not shout. Pass the same colour the solid avatar would use.
+ */
+export function softAvatarStyle(color: string): CSSProperties {
+  return {
+    '--nr-avatar-bg': `color-mix(in srgb, ${color} 32%, var(--nr-color-surface-overlay))`,
+    '--nr-avatar-fg': 'var(--nr-color-ink)',
+  } as CSSProperties
 }
 
 /** Host first, then in the order people joined. */
@@ -68,6 +78,8 @@ export interface PartyRoomProps {
   members: RoomMember[]
   youId: string | null
   chat: ChatMessage[]
+  /** Local lines ("Sam switched to a new video"), shown among the messages. */
+  system?: SystemLine[]
   connection: 'connecting' | 'live' | 'reconnecting'
   /** The server's last refusal ("You're sending messages too quickly."), shown under the input. */
   error: string | null
@@ -88,15 +100,29 @@ function MemberList({ members, youId }: { members: RoomMember[]; youId: string |
     <ul className="nr-members" aria-label="People in the party">
       {sortMembers(members).map((member) => (
         <li key={member.id} className="nr-members__row">
-          <Avatar name={member.display_name} color={memberColor(member.id)} size="sm" decorative />
-          <span className="nr-members__name">
-            {member.display_name}
-            {member.id === youId ? <span className="nr-members__you"> (you)</span> : null}
-          </span>
-          {member.is_host ? <Badge>Host</Badge> : null}
-          <span className="nr-members__status">
-            <Icon icon={STATUS_ICONS[member.status]} size="extension" />
-            {STATUS_WORDS[member.status]}
+          <Avatar
+            name={member.display_name}
+            color={memberColor(member.id)}
+            style={softAvatarStyle(memberColor(member.id))}
+            size="sm"
+            className="nr-avatar--soft"
+            decorative
+          />
+          <span className="nr-members__text">
+            <span className="nr-members__line">
+              <span className="nr-members__name">
+                {member.display_name}
+                {member.id === youId ? <span className="nr-members__you"> (you)</span> : null}
+              </span>
+              {member.is_host ? <span className="nr-members__host">Host</span> : null}
+            </span>
+            <span className="nr-members__status">
+              <span
+                className={`nr-members__dot nr-members__dot--${member.status}`}
+                aria-hidden="true"
+              />
+              {STATUS_WORDS[member.status]}
+            </span>
           </span>
         </li>
       ))}
@@ -107,12 +133,44 @@ function MemberList({ members, youId }: { members: RoomMember[]; youId: string |
 /** Within this many px of the end counts as "at the bottom". */
 const BOTTOM_SLACK_PX = 24
 
+function ChatItem({ entry, now }: { entry: ChatEntry; now: number }) {
+  if (entry.kind === 'system') {
+    return <li className="nr-chat__system">{entry.line.text}</li>
+  }
+  const { message, own, head } = entry
+  const name = own ? 'You' : message.user.display_name
+  const classes = ['nr-chat__msg', own ? 'nr-chat__msg--own' : '', head ? 'nr-chat__msg--head' : '']
+  return (
+    <li className={classes.filter(Boolean).join(' ')}>
+      {head ? (
+        <p className="nr-chat__meta">
+          {own ? (
+            <span className="nr-visually-hidden">You</span>
+          ) : (
+            <span className="nr-chat__name">{name}</span>
+          )}
+          <time className="nr-chat__time" dateTime={new Date(message.sent_at * 1000).toISOString()}>
+            {relativeTime(message.sent_at, now)}
+          </time>
+        </p>
+      ) : (
+        // Screen readers still hear who said a grouped message.
+        <span className="nr-visually-hidden">{name}: </span>
+      )}
+      {/* Plain text only: React escapes it, nothing is linkified. */}
+      <p className="nr-chat__text">{message.text}</p>
+    </li>
+  )
+}
+
 function ChatLog({
   messages,
+  system,
   youId,
   now,
 }: {
   messages: ChatMessage[]
+  system: SystemLine[]
   youId: string | null
   now: number
 }) {
@@ -120,6 +178,7 @@ function ChatLog({
   const atBottom = useRef(true)
   const lastId = useRef<string | null>(null)
   const [hasNew, setHasNew] = useState(false)
+  const entries = chatEntries(messages, system, youId)
 
   const scrollToEnd = () => {
     const el = ref.current
@@ -129,14 +188,19 @@ function ChatLog({
   }
 
   // Follow new messages only when the viewer is already at the bottom; otherwise offer a jump.
+  const newest = entries.at(-1)
+  const newestId = newest
+    ? newest.kind === 'message'
+      ? newest.message.id
+      : `system:${newest.line.id}`
+    : null
   useLayoutEffect(() => {
-    const newest = messages.at(-1)?.id ?? null
-    if (newest === lastId.current) return
+    if (newestId === lastId.current) return
     const first = lastId.current === null
-    lastId.current = newest
+    lastId.current = newestId
     if (first || atBottom.current) scrollToEnd()
     else setHasNew(true)
-  }, [messages])
+  }, [newestId])
 
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const el = event.currentTarget
@@ -155,31 +219,20 @@ function ChatLog({
         tabIndex={0}
         onScroll={onScroll}
       >
-        {messages.length === 0 ? (
-          <p className="nr-panel__muted">No messages yet. Say hi to the party.</p>
+        {entries.length === 0 ? (
+          <div className="nr-chat__empty">
+            <p className="nr-chat__empty-title">No messages yet</p>
+            <p className="nr-panel__muted">Say hi to the party.</p>
+          </div>
         ) : (
           <ol className="nr-chat__list">
-            {messages.map((message) => {
-              const own = message.user.id === youId
-              return (
-                <li
-                  key={message.id}
-                  className={own ? 'nr-chat__msg nr-chat__msg--own' : 'nr-chat__msg'}
-                >
-                  <p className="nr-chat__meta">
-                    <span className="nr-chat__name">{own ? 'You' : message.user.display_name}</span>
-                    <time
-                      className="nr-chat__time"
-                      dateTime={new Date(message.sent_at * 1000).toISOString()}
-                    >
-                      {relativeTime(message.sent_at, now)}
-                    </time>
-                  </p>
-                  {/* Plain text only: React escapes it, nothing is linkified. */}
-                  <p className="nr-chat__text">{message.text}</p>
-                </li>
-              )
-            })}
+            {entries.map((entry) => (
+              <ChatItem
+                key={entry.kind === 'message' ? entry.message.id : `system:${entry.line.id}`}
+                entry={entry}
+                now={now}
+              />
+            ))}
           </ol>
         )}
       </div>
@@ -248,20 +301,26 @@ function Composer({
 
   return (
     <form className="nr-composer" onSubmit={(event) => void submit(event)}>
-      <div className="nr-composer__row">
+      <div
+        className={
+          shownError !== null || input.tooLong
+            ? 'nr-composer__field nr-composer__field--invalid'
+            : 'nr-composer__field'
+        }
+      >
         <label htmlFor={`${id}-input`} className="nr-visually-hidden">
           Message
         </label>
-        <Input
+        <input
           id={`${id}-input`}
-          size="sm"
+          type="text"
           className="nr-composer__input"
           value={text}
           maxLength={CHAT_MAX_LENGTH}
           autoComplete="off"
           placeholder="Message the party"
           disabled={disabledReason !== null}
-          invalid={shownError !== null || input.tooLong}
+          aria-invalid={shownError !== null || input.tooLong || undefined}
           aria-describedby={describedBy || undefined}
           onChange={(event) => {
             setText(event.currentTarget.value)
@@ -274,7 +333,7 @@ function Composer({
         <IconButton
           type="submit"
           size="sm"
-          variant="secondary"
+          className="nr-composer__send"
           icon={SendHorizontal}
           aria-label="Send message"
           disabled={!input.canSend || sending || disabledReason !== null}
@@ -313,14 +372,18 @@ function ReactionBar({
   return (
     <div className="nr-reaction-bar" role="group" aria-label="Reactions">
       {REACTION_KINDS.map((kind) => (
-        <IconButton
+        <button
           key={kind}
-          size="sm"
-          icon={REACTION_ICONS[kind]}
+          type="button"
+          className="nr-reaction-bar__button"
           aria-label={reactionButtonLabel(kind)}
           disabled={disabled}
           onClick={() => onReact(kind)}
-        />
+        >
+          <span className="nr-emoji" aria-hidden="true">
+            {REACTION_EMOJI[kind]}
+          </span>
+        </button>
       ))}
     </div>
   )
@@ -335,6 +398,7 @@ export type PartyChatProps = Omit<PartyRoomProps, 'members'>
 export function PartyChat({
   youId,
   chat,
+  system = [],
   connection,
   error,
   onSend,
@@ -347,11 +411,11 @@ export function PartyChat({
     setTime(now())
     const timer = setInterval(() => setTime(now()), CLOCK_MS)
     return () => clearInterval(timer)
-  }, [now, chat])
+  }, [now, chat, system])
 
   return (
     <section className="nr-room__chat" aria-label="Chat">
-      <ChatLog messages={chat} youId={youId} now={time} />
+      <ChatLog messages={chat} system={system} youId={youId} now={time} />
       <div className="nr-room__compose">
         <ReactionBar disabled={connection !== 'live'} onReact={onReact} />
         <Composer

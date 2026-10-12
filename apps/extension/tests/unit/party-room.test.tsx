@@ -65,14 +65,36 @@ describe('Party tab', () => {
     expect(rows[1]?.querySelector('.nr-avatar')?.getAttribute('aria-hidden')).toBe('true')
   })
 
-  it('shows the chat log with names, times and your own messages marked', () => {
+  it('shows the chat log with names, times and your own messages as bubbles', () => {
     setup()
     const log = screen.getByRole('log', { name: 'Chat messages' })
     expect(log.getAttribute('aria-live')).toBe('polite')
     const items = within(log).getAllByRole('listitem')
     expect(items[0]?.textContent).toBe('Sam Rivera3 min agothat ending')
+    // "You" is for screen readers only; on screen your messages are the right-hand bubbles.
     expect(items[1]?.textContent).toBe('Younowright?')
+    expect(items[1]?.querySelector('.nr-visually-hidden')?.textContent).toBe('You')
     expect(items[1]?.className).toContain('nr-chat__msg--own')
+  })
+
+  it('groups a run of messages from one sender, and shows system lines apart', () => {
+    const sam = { id: 'u2', display_name: 'Sam Rivera' }
+    setup({
+      chat: [
+        { id: 'a', user: sam, text: 'wait', sent_at: NOW / 1000 - 100 },
+        { id: 'b', user: sam, text: 'what', sent_at: NOW / 1000 - 90 },
+      ],
+      system: [{ id: 'video-4', text: 'Sam Rivera switched to a new video', at: NOW / 1000 - 60 }],
+    })
+    const items = within(screen.getByRole('log')).getAllByRole('listitem')
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Sam Rivera1 min agowait',
+      'Sam Rivera: what',
+      'Sam Rivera switched to a new video',
+    ])
+    // The grouped message's name is for screen readers only.
+    expect(items[1]?.querySelector('.nr-chat__name')).toBeNull()
+    expect(items[2]?.className).toBe('nr-chat__system')
   })
 
   it('renders chat as plain text', () => {
@@ -165,6 +187,15 @@ describe('Party tab', () => {
       'React with clap',
       'React with sad',
     ])
+    // Colour emoji on screen; the label carries the name.
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['❤️', '😂', '😮', '🔥', '👏', '😢'])
+    expect(
+      within(group).getAllByRole('button')[0]?.querySelector('span')?.getAttribute('aria-hidden'),
+    ).toBe('true')
     await user.click(screen.getByRole('button', { name: 'React with fire' }))
     expect(props.onReact).toHaveBeenCalledWith('fire')
   })
@@ -177,7 +208,8 @@ describe('Party tab', () => {
   it('waits politely before the member list arrives', async () => {
     const { container } = setup({ members: [], chat: [], connection: 'connecting' })
     expect(screen.getByText('Waiting for the party to connect…')).toBeTruthy()
-    expect(screen.getByText('No messages yet. Say hi to the party.')).toBeTruthy()
+    expect(screen.getByText('No messages yet')).toBeTruthy()
+    expect(screen.getByText('Say hi to the party.')).toBeTruthy()
     await expectNoA11yViolations(container)
   })
 })
@@ -195,6 +227,7 @@ describe('pill over the player', () => {
         reactionsOpen: false,
         toast: null,
         hint: null,
+        note: null,
         ...chat,
       },
       reactions: [
@@ -233,12 +266,20 @@ describe('pill over the player', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     const tray = screen.getByRole('group', { name: 'Reactions' })
     expect(within(tray).getAllByRole('button')).toHaveLength(6)
+    expect(within(tray).getByRole('button', { name: 'React with heart' }).textContent).toBe('❤️')
+    // Floating reactions show the emoji with the sender's name under it.
+    expect(container.querySelector('.nr-reaction')?.textContent).toBe('❤️Sam')
     await userEvent.setup().click(screen.getByRole('button', { name: 'React with clap' }))
     expect(h.onReact).toHaveBeenCalledWith('clap')
     expect(screen.getByText('Sam: that ending')).toBeTruthy()
     // Floating reactions are decorative.
     expect(container.querySelector('.nr-reactions')?.getAttribute('aria-hidden')).toBe('true')
     await expectNoA11yViolations(container)
+  })
+
+  it('shows who switched the video under the pill', () => {
+    render(<PartyOverlay view={pill({ note: 'Sam switched to a new video' })} {...handlers()} />)
+    expect(screen.getByText('Sam switched to a new video')).toBeTruthy()
   })
 
   it('says how to open the panel when it cannot be opened from the page', () => {

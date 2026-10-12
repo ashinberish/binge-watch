@@ -112,24 +112,31 @@ export function PartyPanel({ tabId }: { tabId: number | null }) {
           Invite friends
         </h2>
         {party.status === 'reconnecting' ? <p className="nr-panel__muted">Reconnecting…</p> : null}
-        <label className="nr-party__label" htmlFor="party-link">
+        <label className="nr-visually-hidden" htmlFor="party-link">
           Invite link
         </label>
-        <input
-          id="party-link"
-          className="nr-party__link"
-          type="text"
-          readOnly
-          value={party.inviteUrl}
-          onFocus={(event) => event.currentTarget.select()}
-        />
-        <div className="nr-party__actions">
+        <div className="nr-party__link-row">
+          <input
+            id="party-link"
+            className="nr-party__link"
+            type="text"
+            readOnly
+            value={party.inviteUrl}
+            onFocus={(event) => event.currentTarget.select()}
+          />
           <Button size="sm" variant="secondary" onClick={() => void copyLink(party)}>
             Copy link
           </Button>
-          <Button size="sm" variant="ghost" loading={busy} onClick={() => void leave()}>
-            Leave party
-          </Button>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="nr-text-button"
+            disabled={busy}
+            onClick={() => void leave()}
+          >
+            {busy ? 'Leaving…' : 'Leave party'}
+          </button>
         </div>
         {status}
       </section>

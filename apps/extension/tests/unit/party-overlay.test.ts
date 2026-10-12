@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { youtube } from '../../src/adapters/sites/youtube'
 import type { PlayerAdapter } from '../../src/adapters/types'
 import {
   createPartyOverlay,
   ENDED_NOTICE_MS,
   membersLabel,
+  NOTE_MS,
   type PartyOverlayView,
 } from '../../src/features/party/overlay'
 import { inviteQuestion } from '../../src/features/party/PartyOverlay'
@@ -27,6 +29,7 @@ const view = (overrides: Partial<PartyTabView> = {}): PartyTabView => ({
   members: [],
   youId: 'u1',
   chat: [],
+  system: [],
   unread: 0,
   panelOpen: false,
   ...overrides,
@@ -65,6 +68,7 @@ function setup(href = `${WATCH}#nightreel-party=K7xQ2m`) {
     id: 'youtube',
     findVideo: () => video,
     isAd: () => page.ad,
+    watchUrl: youtube.watchUrl,
   } as unknown as PlayerAdapter
   const replies: Partial<Record<Message['type'], unknown>> = {
     'party:get-for-tab': null,
@@ -122,7 +126,14 @@ describe('party overlay', () => {
       label: 'Watch party · 3 watching',
       needsClick: false,
       anchor: { top: 68, right: 212 },
-      chat: { unread: 0, panelOpen: false, reactionsOpen: false, toast: null, hint: null },
+      chat: {
+        unread: 0,
+        panelOpen: false,
+        reactionsOpen: false,
+        toast: null,
+        hint: null,
+        note: null,
+      },
       reactions: [],
       stage: null,
     })
@@ -362,6 +373,74 @@ describe('party overlay', () => {
       ctx.page.now += 4_000
       ctx.overlay.tick()
       expect(pill(ctx).chat.hint).toBeNull()
+    })
+  })
+
+  describe('the party changes video', () => {
+    const OTHER = 'https://www.youtube.com/watch?v=other12345'
+    const code = 'K7xQ2m'
+
+    async function inParty() {
+      const ctx = setup(WATCH)
+      ctx.replies['party:get-for-tab'] = view({ state: playbackState({ seq: 30 }) })
+      await ctx.overlay.start()
+      expect(ctx.video.currentTime).toBe(105)
+      return ctx
+    }
+
+    it('holds the new video’s state until the page shows it, then applies it', async () => {
+      const ctx = await inParty()
+      ctx.overlay.receive({ type: 'party:video', code, watchUrl: OTHER })
+      ctx.overlay.receive({
+        type: 'party:state',
+        code,
+        state: playbackState({ seq: 31, position: 0, updated_at: 1_005, paused: true }),
+        clockOffsetMs: 0,
+      })
+      // Still the old video (the tab is about to load the new one): leave it alone.
+      expect(ctx.video.currentTime).toBe(105)
+      // Nothing the old video does now is reported to the room.
+      ctx.video.currentTime = 50
+      ctx.overlay.mediaEvent('seeked', ctx.video as unknown as EventTarget)
+      expect(ctx.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'party:report' }))
+
+      ctx.page.href = `${OTHER}&t=0`
+      ctx.overlay.tick()
+      expect(ctx.video.currentTime).toBe(0)
+    })
+
+    it('starts the engine afresh when the viewer picks another video in the page', async () => {
+      const ctx = await inParty()
+      ctx.page.href = OTHER // YouTube navigates without reloading
+      ctx.overlay.receive({ type: 'party:video', code, watchUrl: OTHER })
+      // The server's seq for the new video is not compared with the old video's.
+      ctx.overlay.receive({
+        type: 'party:state',
+        code,
+        state: playbackState({ seq: 2, position: 0, updated_at: 1_005 }),
+        clockOffsetMs: 0,
+      })
+      expect(ctx.video.currentTime).toBe(0)
+    })
+
+    it('says who switched, briefly, under the pill', async () => {
+      const ctx = await inParty()
+      const line = { id: 'video-31', text: 'Sam switched to a new video', at: 1_005 }
+      ctx.overlay.receive({ type: 'party:system', code, line, pill: true })
+      const last = ctx.last()
+      expect(last?.kind === 'pill' ? last.chat.note : null).toBe('Sam switched to a new video')
+      ctx.page.now += NOTE_MS
+      ctx.overlay.tick()
+      const later = ctx.last()
+      expect(later?.kind === 'pill' ? later.chat.note : 'missing').toBeNull()
+      ctx.overlay.receive({
+        type: 'party:system',
+        code,
+        line: { ...line, id: 'video-32', text: 'You switched to a new video' },
+        pill: false,
+      })
+      const own = ctx.last()
+      expect(own?.kind === 'pill' ? own.chat.note : 'missing').toBeNull()
     })
   })
 

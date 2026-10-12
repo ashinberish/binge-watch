@@ -7,6 +7,7 @@ import {
   type ControlAction,
   type MemberStatus,
   type PartyMember,
+  type PartyVideo,
   type PlaybackState,
   type Reaction,
   type ReactionKind,
@@ -74,6 +75,8 @@ export interface WelcomeExtras {
   members: RoomMember[]
   /** Recent chat, oldest first. */
   chat: ChatMessage[]
+  /** The party's current video, when the server says. */
+  video: PartyVideo | null
 }
 
 export interface PartyConnectionDeps {
@@ -95,6 +98,8 @@ export interface PartyConnectionDeps {
   onPresence?: (members: RoomMember[]) => void
   onChat?: (message: ChatMessage) => void
   onReaction?: (reaction: Reaction) => void
+  /** Someone (possibly this viewer) changed the party's video. A `state` frame follows. */
+  onVideo?: (video: PartyVideo, by: PartyMember | null, seq: number) => void
   /** The server refused something we sent (e.g. chat too fast), as a sentence for people. */
   onError?: (detail: string) => void
   onStatus?: (status: ConnectionStatus) => void
@@ -188,6 +193,7 @@ export function createPartyConnection(deps: PartyConnectionDeps) {
         deps.onWelcome?.(message.state, message.members, message.you, {
           members: message.members_list,
           chat: message.chat,
+          video: message.video,
         })
         break
       case 'state':
@@ -204,6 +210,9 @@ export function createPartyConnection(deps: PartyConnectionDeps) {
         break
       case 'reaction':
         deps.onReaction?.(message.reaction)
+        break
+      case 'video':
+        deps.onVideo?.(message.video, message.by, message.seq)
         break
       default:
         break
@@ -345,6 +354,17 @@ export function createPartyConnection(deps: PartyConnectionDeps) {
     react(kind: ReactionKind): boolean {
       if (!welcomed) return false
       return write({ type: 'react', kind })
+    },
+
+    /** Moves the party to another video. False when not connected. */
+    video(video: PartyVideo): boolean {
+      if (!welcomed) return false
+      return write({
+        type: 'video',
+        watch_url: video.watch_url,
+        provider: video.provider,
+        episode_id: video.episode_id,
+      })
     },
 
     /** Closes for good without reporting an end. */

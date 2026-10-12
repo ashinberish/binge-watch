@@ -66,6 +66,7 @@ function setup(overrides: Partial<PartyConnectionDeps> = {}) {
     onChat: vi.fn(),
     onReaction: vi.fn(),
     onError: vi.fn(),
+    onVideo: vi.fn(),
     ...overrides,
   }
   const connection = createPartyConnection(deps)
@@ -147,6 +148,7 @@ describe('party connection', () => {
     expect(ctx.deps.onWelcome).toHaveBeenCalledWith(playbackState(), 2, you, {
       members: [],
       chat: [],
+      video: null,
     })
     expect(ctx.deps.onMembers).toHaveBeenCalledWith(3)
     expect(ctx.connection.clockOffsetMs()).toBe(5_000)
@@ -332,6 +334,7 @@ describe('party connection', () => {
       expect(ctx.deps.onWelcome).toHaveBeenCalledWith(playbackState(), 1, you, {
         members,
         chat: [message],
+        video: null,
       })
     })
 
@@ -367,6 +370,71 @@ describe('party connection', () => {
         { type: 'chat', text: 'that ending' },
         { type: 'react', kind: 'sad' },
       ])
+    })
+  })
+
+  describe('video changes', () => {
+    const video = {
+      watch_url: 'https://www.youtube.com/watch?v=other12345',
+      provider: 'youtube',
+      episode_id: null,
+    }
+
+    it('passes the welcome’s video on', async () => {
+      const ctx = setup()
+      ctx.connection.connect()
+      await vi.advanceTimersByTimeAsync(0)
+      const socket = ctx.latest()
+      socket.open()
+      socket.push({ type: 'pong', server_time: Date.now() / 1000 })
+      socket.push({ type: 'welcome', state: playbackState(), members: 1, you, video })
+      expect(ctx.deps.onWelcome).toHaveBeenCalledWith(playbackState(), 1, you, {
+        members: [],
+        chat: [],
+        video,
+      })
+    })
+
+    it('relays a video frame before the state that follows it', async () => {
+      const order: string[] = []
+      const ctx = setup({
+        onVideo: vi.fn(() => void order.push('video')),
+        onState: vi.fn(() => void order.push('state')),
+      })
+      const socket = await live(ctx)
+      const sam = { id: 'u2', display_name: 'Sam' }
+      socket.push({ type: 'video', video, by: sam, seq: 12 })
+      socket.push({ type: 'state', state: playbackState({ seq: 12, position: 0 }) })
+      expect(ctx.deps.onVideo).toHaveBeenCalledWith(video, sam, 12)
+      expect(order).toEqual(['video', 'state'])
+    })
+
+    it('sends a video change only once welcomed', async () => {
+      const ctx = setup()
+      ctx.connection.connect()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(ctx.connection.video({ ...video, episode_id: 'e1' })).toBe(false)
+      const socket = await (async () => {
+        ctx.latest().open()
+        const s = ctx.latest()
+        s.push({ type: 'pong', server_time: Date.now() / 1000 })
+        s.push({ type: 'welcome', state: playbackState(), members: 2, you })
+        return s
+      })()
+      expect(ctx.connection.video({ ...video, episode_id: 'e1' })).toBe(true)
+      expect(socket.sent.at(-1)).toEqual({
+        type: 'video',
+        watch_url: video.watch_url,
+        provider: 'youtube',
+        episode_id: 'e1',
+      })
+    })
+
+    it('surfaces the server refusing a change too soon', async () => {
+      const ctx = setup()
+      const socket = await live(ctx)
+      socket.push({ type: 'error', detail: 'Wait a moment before changing the video.' })
+      expect(ctx.deps.onError).toHaveBeenCalledWith('Wait a moment before changing the video.')
     })
   })
 })

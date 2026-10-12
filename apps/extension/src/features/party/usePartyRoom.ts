@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { PANEL_PORT, type PanelReport } from '../../background/panels'
 import { onBroadcast, send, type PartyTabView } from '../../messaging/protocol'
-import { addChatMessage, emptyChatLog } from '../../party/chat'
+import { addChatMessage, addSystemLine, emptyChatLog } from '../../party/chat'
 import type { ReactionKind } from '../../party/protocol'
 
 /**
@@ -62,6 +62,13 @@ export function usePartyRoom(tabId: number | null) {
             break
           case 'party:unread':
             setView((v) => (v && v.code === message.code ? { ...v, unread: message.unread } : v))
+            break
+          case 'party:system':
+            setView((v) =>
+              v && v.code === message.code
+                ? { ...v, system: addSystemLine(v.system, message.line) }
+                : v,
+            )
             break
           case 'party:error':
             setError(message.detail)

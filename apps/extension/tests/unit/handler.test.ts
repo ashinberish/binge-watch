@@ -33,6 +33,7 @@ const partyView: PartyTabView = {
   members: [],
   youId: null,
   chat: [],
+  system: [],
   unread: 0,
   panelOpen: false,
 }
@@ -46,7 +47,7 @@ function fakeServices(): Services {
     signOut: vi.fn(async () => undefined),
     listProfiles: vi.fn(async () => ok({ profiles: [], activeProfileId: null })),
     setProfile: vi.fn(async () => true),
-    continueWatching: vi.fn(async () => ok([])),
+    history: vi.fn(async () => ok([])),
     streak: vi.fn(async () => ok({ current_days: 1, longest_days: 2, episodes_today: 3 })),
     episodeForTab: vi.fn(async () => null),
     show: vi.fn(async () =>
@@ -90,15 +91,32 @@ describe('message handler', () => {
     for (const type of [
       'session:sign-in',
       'profiles:list',
-      'history:continue',
+      'history:list',
       'streak:get',
     ] as const) {
       await handle({ type }, popup)
     }
     expect(services.signIn).toHaveBeenCalledOnce()
     expect(services.listProfiles).toHaveBeenCalledOnce()
-    expect(services.continueWatching).toHaveBeenCalledOnce()
+    expect(services.history).toHaveBeenCalledWith(null)
     expect(services.streak).toHaveBeenCalledOnce()
+  })
+
+  it('pages the watch history with a checked cursor', async () => {
+    const services = fakeServices()
+    const handle = createHandler(services, ORIGIN)
+    const cursor = '2026-10-11T21:04:00Z'
+    expect(await handle({ type: 'history:list', cursor }, popup)).toEqual(ok([]))
+    expect(services.history).toHaveBeenCalledWith(cursor)
+    expect(await handle({ type: 'history:list', cursor: 'yesterday' }, popup)).toEqual({
+      ok: false,
+      error: 'rejected',
+    })
+    expect(await handle({ type: 'history:list', cursor: 42 }, popup)).toEqual({
+      ok: false,
+      error: 'rejected',
+    })
+    expect(services.history).toHaveBeenCalledTimes(1)
   })
 
   it('accepts progress and episode lookups from a supported player tab', async () => {
@@ -141,9 +159,9 @@ describe('message handler', () => {
     const services = fakeServices()
     const handle = createHandler(services, ORIGIN)
     expect(await handle({ type: 'session:sign-out' }, player)).toEqual({ ok: false })
-    expect(await handle({ type: 'history:continue' }, player)).toEqual({ ok: false })
+    expect(await handle({ type: 'history:list' }, player)).toEqual({ ok: false })
     expect(services.signOut).not.toHaveBeenCalled()
-    expect(services.continueWatching).not.toHaveBeenCalled()
+    expect(services.history).not.toHaveBeenCalled()
   })
 
   it('ignores anything that is not a message', async () => {

@@ -13,14 +13,25 @@ body {
 .nr-panel--fill {
   box-sizing: border-box;
   height: 100%;
-  gap: var(--nr-space-3);
+  gap: var(--nr-space-2);
 }
 
+/* Tabs: compact, counts as quiet numerals. */
 .nr-panel__tabs {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
+}
+
+.nr-panel__tabs .nr-tabs__list {
+  gap: 20px;
+}
+
+.nr-panel__tabs .nr-tabs__trigger {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
 }
 
 .nr-panel__tab {
@@ -32,6 +43,7 @@ body {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  padding-top: 0;
 }
 
 .nr-panel__tab[hidden] {
@@ -39,19 +51,24 @@ body {
 }
 
 .nr-tab-count {
-  display: inline-block;
-  min-width: 18px;
-  margin-left: var(--nr-space-2);
-  padding: 0 var(--nr-space-1);
-  border-radius: var(--nr-radius-pill);
-  background: var(--nr-color-surface-overlay);
-  color: var(--nr-color-ink-muted);
+  margin-left: 6px;
+  color: var(--nr-color-ink-subtle);
   font: var(--nr-type-caption);
   font-variant-numeric: tabular-nums;
+}
+
+/* Unread chat is the one count that asks for attention. */
+.nr-tab-count--unread {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: var(--nr-radius-pill);
+  background: var(--nr-color-brand);
+  color: var(--nr-color-on-brand);
+  font: 600 11px / 16px var(--nr-font-sans);
   text-align: center;
 }
 
-/* Party tab */
+/* Members */
 .nr-room {
   display: flex;
   flex-direction: column;
@@ -59,29 +76,36 @@ body {
 }
 
 .nr-members {
-  display: grid;
-  gap: var(--nr-space-4);
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .nr-members__row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    'avatar name badge'
-    'avatar status status';
-  column-gap: var(--nr-space-3);
+  display: flex;
   align-items: center;
+  gap: var(--nr-space-3);
+  min-height: 44px;
 }
 
-.nr-members__row > .nr-avatar {
-  grid-area: avatar;
+.nr-members__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nr-members__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nr-space-2);
+  min-width: 0;
 }
 
 .nr-members__name {
-  grid-area: name;
   overflow: hidden;
   font: var(--nr-type-label);
   letter-spacing: var(--nr-tracking-label);
@@ -91,23 +115,42 @@ body {
 
 .nr-members__you {
   color: var(--nr-color-ink-muted);
-  font: var(--nr-type-caption);
+  font-weight: 400;
 }
 
-.nr-members__row > .nr-badge {
-  grid-area: badge;
+.nr-members__host {
+  flex: none;
+  color: var(--nr-color-ink-subtle);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
 }
 
 .nr-members__status {
-  grid-area: status;
   display: inline-flex;
   align-items: center;
-  gap: var(--nr-space-1);
+  gap: 6px;
   color: var(--nr-color-ink-muted);
   font: var(--nr-type-caption);
   letter-spacing: var(--nr-tracking-caption);
 }
 
+.nr-members__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nr-color-ink-subtle);
+}
+
+.nr-members__dot--watching {
+  background: var(--nr-color-info);
+}
+
+.nr-members__dot--ad {
+  background: var(--nr-color-accent);
+}
+
+/* Chat */
 .nr-room__chat {
   display: flex;
   flex: 1;
@@ -124,47 +167,67 @@ body {
 }
 
 .nr-chat__log {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 120px;
   overflow-y: auto;
-  padding: var(--nr-space-1) 0;
-}
-
-/* Reactions and the message box, pinned under the log. */
-.nr-room__compose {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nr-space-2);
-  padding-top: var(--nr-space-3);
-  border-top: 1px solid var(--nr-color-surface-overlay);
+  padding: var(--nr-space-3) 0 var(--nr-space-1);
 }
 
 .nr-chat__log:focus-visible {
   outline: var(--nr-focus-ring);
-  outline-offset: var(--nr-focus-offset);
+  outline-offset: calc(-1 * var(--nr-focus-offset));
+}
+
+.nr-chat__empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nr-space-1);
+  text-align: center;
+}
+
+.nr-chat__empty-title {
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
 }
 
 .nr-chat__list {
   display: flex;
   flex-direction: column;
-  gap: var(--nr-space-3);
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .nr-chat__msg {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
-  padding-left: var(--nr-space-2);
 }
 
-/* Your own messages: labelled "You" and set on a raised band with an edge line. */
+/* A new sender (or a pause of two minutes) starts a new group. */
+.nr-chat__msg--head:not(:first-child),
+.nr-chat__system + .nr-chat__msg {
+  margin-top: var(--nr-space-3);
+}
+
+/* Your own messages: right-aligned in a soft bubble, no name. */
 .nr-chat__msg--own {
-  padding: var(--nr-space-1) var(--nr-space-2);
-  border-radius: var(--nr-radius-sm);
+  align-items: flex-end;
+}
+
+.nr-chat__msg--own .nr-chat__text {
+  max-width: 85%;
+  box-sizing: border-box;
+  padding: 6px var(--nr-space-3);
+  border-radius: 12px;
   background: var(--nr-color-surface-raised);
-  box-shadow: inset 2px 0 0 var(--nr-color-border-strong);
 }
 
 .nr-chat__meta {
@@ -180,7 +243,7 @@ body {
 }
 
 .nr-chat__time {
-  color: var(--nr-color-ink-muted);
+  color: var(--nr-color-ink-subtle);
   font: var(--nr-type-caption);
   letter-spacing: var(--nr-tracking-caption);
 }
@@ -191,18 +254,32 @@ body {
   white-space: pre-wrap;
 }
 
+/* Lines from Nightreel itself ("Sam switched to a new video"): centred, quiet. */
+.nr-chat__system {
+  margin: var(--nr-space-3) 0 0;
+  color: var(--nr-color-ink-subtle);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+  text-align: center;
+}
+
+.nr-chat__system:first-child {
+  margin-top: 0;
+}
+
 .nr-chat__jump {
   position: absolute;
   bottom: var(--nr-space-2);
   left: 50%;
   transform: translateX(-50%);
   padding: var(--nr-space-1) var(--nr-space-3);
-  border: 1px solid var(--nr-color-border);
+  border: 0;
   border-radius: var(--nr-radius-pill);
   background: var(--nr-color-surface-overlay);
   color: var(--nr-color-ink);
   font: var(--nr-type-caption);
   letter-spacing: var(--nr-tracking-caption);
+  box-shadow: var(--nr-shadow-lift);
   cursor: pointer;
 }
 
@@ -211,28 +288,117 @@ body {
   outline-offset: var(--nr-focus-offset);
 }
 
-.nr-reaction-bar {
+/* Reactions and the message box, pinned under the log. */
+.nr-room__compose {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: var(--nr-space-2);
+  padding-top: var(--nr-space-3);
 }
 
+/* A compact row, its first emoji lined up with the text in the field below. */
+.nr-reaction-bar {
+  display: flex;
+  gap: var(--nr-space-1);
+  padding-left: var(--nr-space-1);
+}
+
+.nr-reaction-bar__button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--nr-radius-pill);
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  transition:
+    background-color var(--nr-duration-fast) ease-out,
+    transform var(--nr-duration-fast) ease-out;
+}
+
+.nr-reaction-bar__button:hover {
+  background: var(--nr-color-surface-overlay);
+}
+
+.nr-reaction-bar__button:active {
+  transform: scale(0.92);
+}
+
+.nr-reaction-bar__button:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-reaction-bar__button:disabled {
+  opacity: var(--nr-opacity-disabled);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nr-reaction-bar__button {
+    transition: none;
+  }
+  .nr-reaction-bar__button:active {
+    transform: none;
+  }
+}
+
+/* One rounded field with the send button inside it. */
 .nr-composer {
   display: grid;
   gap: var(--nr-space-1);
 }
 
-.nr-composer__row {
+.nr-composer__field {
   display: flex;
-  gap: var(--nr-space-2);
   align-items: center;
+  gap: var(--nr-space-1);
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 4px 4px 4px var(--nr-space-4);
+  border-radius: 20px;
+  background: var(--nr-color-surface-raised);
+}
+
+.nr-composer__field:has(.nr-composer__input:focus-visible) {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-composer__field--invalid {
+  box-shadow: inset 0 0 0 1px var(--nr-color-danger);
 }
 
 .nr-composer__input {
   flex: 1;
   min-width: 0;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nr-color-ink);
+  font: var(--nr-type-body-sm);
+  outline: none;
+}
+
+.nr-composer__input::placeholder {
+  color: var(--nr-color-ink-subtle);
+}
+
+.nr-composer__input:disabled {
+  opacity: var(--nr-opacity-disabled);
+}
+
+.nr-composer__send {
+  flex: none;
+  border-radius: var(--nr-radius-pill);
 }
 
 .nr-composer__note {
+  padding: 0 var(--nr-space-4);
   color: var(--nr-color-ink-muted);
   font: var(--nr-type-caption);
   letter-spacing: var(--nr-tracking-caption);
@@ -242,6 +408,7 @@ body {
   color: var(--nr-color-danger);
 }
 
+/* Header account button */
 .nr-panel__account {
   display: inline-flex;
   padding: 0;

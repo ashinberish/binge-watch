@@ -30,6 +30,11 @@ export interface PlayerAdapter {
    * so every viewer's tab must produce the same string. Null when the page has no video.
    */
   watchUrl(page: Document | URL | string): string | null
+  /**
+   * The service's id for the video at a watch URL (what `snapshot().externalId` reports on
+   * that page), or null. Lets the service worker find a cached catalog match without the page.
+   */
+  externalId?(watchUrl: string): string | null
   /** Starts the next episode with the player's own control. Returns false if it could not. */
   playNext?(doc: Document): boolean
   /** True while the player is showing an ad. The countdown never covers ads. */

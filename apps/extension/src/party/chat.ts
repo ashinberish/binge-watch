@@ -117,3 +117,79 @@ export function truncate(text: string, max: number): string {
     .join('')
     .trimEnd()}…`
 }
+
+/**
+ * A line the extension adds to a tab's chat by itself ("Sam switched to a new video").
+ * Local only: never sent to the server, and shown apart from people's messages.
+ */
+export interface SystemLine {
+  id: string
+  text: string
+  /** Server epoch seconds, so it sorts among chat messages. */
+  at: number
+}
+
+/** A tab keeps at most this many system lines. */
+export const SYSTEM_LINE_LIMIT = 20
+
+/** Adds a line unless one with its id is already there, keeping the newest 20. */
+export function addSystemLine(lines: SystemLine[], line: SystemLine): SystemLine[] {
+  if (lines.some((l) => l.id === line.id)) return lines
+  const next = [...lines, line]
+  return next.length > SYSTEM_LINE_LIMIT ? next.slice(-SYSTEM_LINE_LIMIT) : next
+}
+
+/** Messages from one sender this close together share one name and time. */
+export const CHAT_GROUP_SECONDS = 120
+
+export type ChatEntry =
+  | {
+      kind: 'message'
+      message: ChatMessage
+      own: boolean
+      /** First of a run from the same sender: shows the name and time. */
+      head: boolean
+    }
+  | { kind: 'system'; line: SystemLine }
+
+/**
+ * The chat log as the panel draws it: messages and system lines in time order, with
+ * consecutive messages from one sender within two minutes grouped under one head.
+ */
+export function chatEntries(
+  messages: ChatMessage[],
+  system: SystemLine[],
+  youId: string | null,
+): ChatEntry[] {
+  const merged: Array<ChatEntry & { at: number; order: number }> = [
+    ...messages.map((message, order) => ({
+      kind: 'message' as const,
+      message,
+      own: message.user.id === youId,
+      head: true,
+      at: message.sent_at,
+      order,
+    })),
+    ...system.map((line, order) => ({
+      kind: 'system' as const,
+      line,
+      at: line.at,
+      order: messages.length + order,
+    })),
+  ].sort((a, b) => a.at - b.at || a.order - b.order)
+
+  let previous: ChatMessage | null = null
+  return merged.map(({ at: _at, order: _order, ...entry }) => {
+    if (entry.kind === 'system') {
+      previous = null
+      return entry
+    }
+    const { message } = entry
+    const head =
+      previous === null ||
+      previous.user.id !== message.user.id ||
+      message.sent_at - previous.sent_at > CHAT_GROUP_SECONDS
+    previous = message
+    return { ...entry, head }
+  })
+}

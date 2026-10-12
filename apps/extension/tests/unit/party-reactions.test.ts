@@ -5,6 +5,7 @@ import type { Reaction } from '../../src/party/protocol'
 import {
   createReactionQueue,
   MAX_FLOATING_REACTIONS,
+  REACTION_EMOJI,
   REACTION_LIFETIME_MS,
   reactionButtonLabel,
 } from '../../src/party/reactions'
@@ -94,5 +95,18 @@ describe('side panel tracker', () => {
     expect(isPanelReport({ type: 'panel:view', tabId: 1.5, reading: true })).toBe(false)
     expect(isPanelReport({ type: 'other', tabId: 3, reading: true })).toBe(false)
     expect(isPanelReport(null)).toBe(false)
+  })
+})
+
+describe('reaction emoji', () => {
+  it('maps every kind to its emoji', () => {
+    expect(REACTION_EMOJI).toEqual({
+      heart: '❤️',
+      laugh: '😂',
+      wow: '😮',
+      fire: '🔥',
+      clap: '👏',
+      sad: '😢',
+    })
   })
 })

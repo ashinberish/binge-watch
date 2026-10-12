@@ -36,7 +36,7 @@ function answer(replies: Record<string, unknown>) {
 const signedIn = {
   'session:get': { signedIn: true, displayName: 'Kai' },
   'profiles:list': { ok: true, data: { profiles: [profile], activeProfileId: 'p1' } },
-  'history:continue': { ok: true, data: [] },
+  'history:list': { ok: true, data: [] },
   'streak:get': { ok: true, data: { current_days: 0, longest_days: 0, episodes_today: 0 } },
 }
 
@@ -55,17 +55,19 @@ describe('side panel', () => {
     await expectNoA11yViolations(container)
   })
 
-  it('shows continue watching and the account menu, without tabs, outside a party', async () => {
+  it('shows the watch history and the account menu, without tabs, outside a party', async () => {
     answer(signedIn)
     const { container } = render(<App />)
-    expect(await screen.findByRole('heading', { name: 'Continue watching' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'History' })).toBeTruthy()
+    expect(await screen.findByText('Episodes you watch show up here.')).toBeTruthy()
+    expect(send).toHaveBeenCalledWith({ type: 'history:list' })
     expect(screen.getByRole('button', { name: 'Account menu for Kai' })).toBeTruthy()
     expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.queryByRole('tab', { name: /Episodes/ })).toBeNull()
     await expectNoA11yViolations(container)
   })
 
-  it('opens Chat in a party, with Members and Home beside it', async () => {
+  it('opens Chat in a party, with Members and History beside it', async () => {
     answer(signedIn)
     partyView = {
       code: 'k3x9',
@@ -83,13 +85,16 @@ describe('side panel', () => {
       ],
       youId: 'u1',
       chat: [],
+      system: [],
       unread: 0,
     } as unknown as PartyTabView
     const { container } = render(<App />)
     const chat = await screen.findByRole('tab', { name: /Chat/ })
     expect(chat.getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole('tab', { name: /Members/ }).textContent).toContain('2')
-    expect(screen.getByRole('tab', { name: 'Home' })).toBeTruthy()
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabs).toEqual(['Chat', 'Members2', 'History'])
+    expect(screen.queryByRole('tab', { name: 'Home' })).toBeNull()
     expect(screen.queryByRole('tab', { name: /Episodes/ })).toBeNull()
     expect(screen.getByRole('log', { name: 'Chat messages' })).toBeTruthy()
     await expectNoA11yViolations(container)

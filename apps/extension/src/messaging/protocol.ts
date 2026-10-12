@@ -1,6 +1,6 @@
 import type { PlaybackSnapshot } from '../adapters/types'
 import type { Result } from '../lib/result'
-import type { ContinueWatchingItem, MatchResult, Profile, ShowDetail, Streak } from '../lib/types'
+import type { HistoryItem, MatchResult, Profile, ShowDetail, Streak } from '../lib/types'
 import type { ControlAction, MemberStatus, ReactionKind } from '../party/protocol'
 import type { PartyLiveMessage, PartyTabMessage, PartyTabView } from '../party/rooms'
 
@@ -43,7 +43,8 @@ export type Message =
   | { type: 'session:sign-out' }
   | { type: 'profiles:list' }
   | { type: 'profile:set'; profileId: string }
-  | { type: 'history:continue' }
+  /** The active profile's watch history, newest first. `cursor` is the last row's `updated_at`. */
+  | { type: 'history:list'; cursor?: string }
   | { type: 'streak:get' }
   | { type: 'episode:for-tab'; tabId: number }
   | { type: 'show:get'; showId: string }
@@ -84,7 +85,7 @@ interface ReplyMap {
   'session:sign-out': Ack
   'profiles:list': Result<ProfilesState>
   'profile:set': Ack
-  'history:continue': Result<ContinueWatchingItem[]>
+  'history:list': Result<HistoryItem[]>
   'streak:get': Result<Streak>
   'episode:for-tab': MatchResult | null
   'show:get': Result<ShowDetail>
@@ -124,6 +125,7 @@ const PARTY_LIVE_TYPES = [
   'party:reaction',
   'party:error',
   'party:unread',
+  'party:system',
 ] as const satisfies readonly PartyLiveMessage['type'][]
 
 const BROADCAST_TYPES = new Set<string>([
@@ -159,6 +161,7 @@ const PARTY_TAB_TYPES = new Set<string>([
   'party:state',
   'party:members',
   'party:ended',
+  'party:video',
   ...PARTY_LIVE_TYPES,
 ])
 

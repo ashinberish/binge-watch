@@ -25,7 +25,7 @@ export interface Services {
   signOut(): Promise<void>
   listProfiles(): Promise<ReplyOf<'profiles:list'>>
   setProfile(profileId: string): Promise<boolean>
-  continueWatching(): Promise<ReplyOf<'history:continue'>>
+  history(cursor: string | null): Promise<ReplyOf<'history:list'>>
   streak(): Promise<ReplyOf<'streak:get'>>
   episodeForTab(tabId: number): Promise<ReplyOf<'episode:for-tab'>>
   show(showId: string): Promise<ReplyOf<'show:get'>>
@@ -89,6 +89,11 @@ function isSnapshot(value: unknown): value is PlaybackSnapshot {
     typeof s.positionSeconds === 'number' &&
     typeof s.durationSeconds === 'number'
   )
+}
+
+/** A history page cursor: the `updated_at` (ISO 8601) of the last row already shown. */
+function isCursor(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 64 && Number.isFinite(Date.parse(value))
 }
 
 /** A reported play/pause/seek, checked field by field (the content script is not trusted). */
@@ -158,8 +163,11 @@ export function createHandler(services: Services, extensionOrigin: string) {
       case 'profile:set':
         if (typeof message.profileId !== 'string' || !message.profileId) return { ok: false }
         return { ok: await services.setProfile(message.profileId) }
-      case 'history:continue':
-        return services.continueWatching()
+      case 'history:list': {
+        const { cursor } = message
+        if (cursor !== undefined && !isCursor(cursor)) return fail('rejected')
+        return services.history(cursor ?? null)
+      }
       case 'streak:get':
         return services.streak()
       case 'episode:for-tab':

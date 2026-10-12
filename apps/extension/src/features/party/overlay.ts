@@ -8,7 +8,7 @@ import {
   type SyncEngine,
 } from '../../party/engine'
 import { parsePartyFragment, stripPartyFragment } from '../../party/invite'
-import type { ReactionKind } from '../../party/protocol'
+import type { PlaybackState, ReactionKind } from '../../party/protocol'
 import { createReactionQueue, type FloatingReaction } from '../../party/reactions'
 import { createStatusReporter, deriveStatus } from '../../party/status'
 import { createToastQueue, type ChatToast } from '../../party/toasts'
@@ -36,6 +36,8 @@ export interface PillChat {
   toast: ChatToast | null
   /** The side panel could not be opened from the page: tell the viewer how. */
   hint: string | null
+  /** "Sam switched to a new video", briefly. */
+  note: string | null
 }
 
 export type PartyOverlayView =
@@ -75,6 +77,8 @@ const CONTROLS_CLEARANCE = 72
 /** How long "Open the side panel to chat" stays up. */
 export const PANEL_HINT_MS = 4_000
 export const PANEL_HINT = 'Open the side panel to chat'
+/** How long "Sam switched to a new video" stays under the pill. */
+export const NOTE_MS = 4_000
 
 export function membersLabel(count: number): string {
   return `Watch party · ${Math.max(1, count)} watching`
@@ -107,7 +111,12 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
   const { adapter, doc } = deps
   const now = deps.now ?? Date.now
 
-  let party: { code: string; members: number } | null = null
+  let party: { code: string; members: number; watchUrl: string } | null = null
+  /** The room's latest state, applied once the page shows the party's video. */
+  let latest: { state: PlaybackState; offsetMs: number } | null = null
+  /** The video the engine is following; another one on the page starts it afresh. */
+  let fedFor: string | null = null
+  let note: { text: string; until: number } | null = null
   let engine: SyncEngine | null = null
   let needsClick = false
   let invite: { code: string; hostName: string; joining: boolean; error: string | null } | null =
@@ -122,6 +131,22 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
   let hiddenSince: number | null = null
 
   const isAd = () => adapter.isAd?.(doc) ?? false
+  /** The page shows the party's video (not the old one, mid-switch, or another one). */
+  const onPartyVideo = () =>
+    party !== null && adapter.watchUrl(doc.location.href) === party.watchUrl
+
+  /**
+   * Gives the engine the room's latest state, but only while the page plays the party's
+   * video. A new video (after a switch, or the viewer picking one) resets the engine first.
+   */
+  function feed() {
+    if (!engine || !party || !onPartyVideo()) return
+    if (fedFor !== party.watchUrl) {
+      engine.reset()
+      fedFor = party.watchUrl
+    }
+    if (latest) engine.receive(latest.state, latest.offsetMs)
+  }
   const reducedMotion =
     deps.reducedMotion ??
     (() => doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
@@ -196,6 +221,7 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
           reactionsOpen,
           toast,
           hint: now() < hintUntil ? PANEL_HINT : null,
+          note: note && now() < note.until ? note.text : null,
         },
         reactions: floating,
         stage: floating.length > 0 ? stage() : null,
@@ -237,12 +263,16 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
         },
       })
       engine.setVideo(adapter.findVideo(doc))
+      fedFor = null
+      latest = null
+      note = null
     }
-    party = { code: view.code, members: view.memberCount }
+    party = { code: view.code, members: view.memberCount, watchUrl: view.watchUrl }
     invite = null
     notice = null
     ended = null
-    if (view.state) engine?.receive(view.state, view.clockOffsetMs)
+    if (view.state) latest = { state: view.state, offsetMs: view.clockOffsetMs }
+    feed()
     updateStatus()
     draw()
   }
@@ -251,6 +281,9 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
     engine?.dispose()
     engine = null
     party = null
+    latest = null
+    fedFor = null
+    note = null
     needsClick = false
     status.dispose()
     status.reset()
@@ -370,8 +403,21 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
       }
       switch (message.type) {
         case 'party:state':
-          engine?.receive(message.state, message.clockOffsetMs)
+          latest = { state: message.state, offsetMs: message.clockOffsetMs }
+          feed()
           return
+        case 'party:video':
+          if (message.watchUrl !== party.watchUrl) {
+            // The old video's state means nothing for the new one; its state follows.
+            party = { ...party, watchUrl: message.watchUrl }
+            latest = null
+            needsClick = false
+          }
+          feed()
+          break
+        case 'party:system':
+          if (message.pill) note = { text: message.line.text, until: now() + NOTE_MS }
+          break
         case 'party:members':
           party = { ...party, members: message.count }
           break
@@ -438,6 +484,8 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
     /** A media event from the page. Only the player's main video counts. */
     mediaEvent(type: string, target: EventTarget | null) {
       if (!engine || !(MEDIA_EVENTS as readonly string[]).includes(type)) return
+      // Mid-switch the page still plays the old video: nothing it does is the room's.
+      if (!onPartyVideo()) return
       const video = adapter.findVideo(doc)
       if (!video || target !== video) return
       engine.setVideo(video)
@@ -448,7 +496,8 @@ export function createPartyOverlay(deps: PartyOverlayDeps) {
     tick() {
       if (engine) {
         engine.setVideo(adapter.findVideo(doc))
-        engine.tick()
+        feed()
+        if (onPartyVideo()) engine.tick()
       }
       updateStatus()
       toasts.advance()

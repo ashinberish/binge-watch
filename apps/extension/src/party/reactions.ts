@@ -96,3 +96,13 @@ export const REACTION_LABELS: Record<ReactionKind, string> = {
 
 export const reactionButtonLabel = (kind: ReactionKind): string =>
   `React with ${REACTION_LABELS[kind]}`
+
+/** The six reactions as colour emoji, in the side panel, the pill and over the video. */
+export const REACTION_EMOJI: Record<ReactionKind, string> = {
+  heart: '❤️',
+  laugh: '😂',
+  wow: '😮',
+  fire: '🔥',
+  clap: '👏',
+  sad: '😢',
+}

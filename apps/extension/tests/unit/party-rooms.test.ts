@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { fail, ok } from '../../src/lib/result'
 import type { PartyConnection } from '../../src/party/connection'
 import {
   createPartyRooms,
+  EXPECTED_NAVIGATION_MS,
+  VIDEO_RETRY_MS,
   type ConnectionHandlers,
   type PanelView,
   type PartyInfo,
@@ -31,6 +33,7 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
   }> = []
   let saved: Record<string, StoredParty> = {}
   const panel: Record<number, PanelView> = {}
+  const clock = { now: 1_000_000 }
   const deps = {
     api: {
       create: vi.fn(async () => ok(party())),
@@ -45,6 +48,7 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
         status: vi.fn(() => true),
         chat: vi.fn(() => true),
         react: vi.fn(() => true),
+        video: vi.fn(() => true),
         close: vi.fn(),
         clockOffsetMs: () => 250,
         connected: true,
@@ -58,6 +62,11 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
     panelFor: (tabId: number) => panel[tabId] ?? { open: false, reading: false },
     tabUrl: vi.fn(async (tabId: number) => tabs[tabId] ?? null),
     episodeIdForTab: vi.fn(async () => 'e1'),
+    episodeIdForUrl: vi.fn(async (): Promise<string | null> => null),
+    navigateTab: vi.fn(async (tabId: number, url: string) => {
+      tabs[tabId] = url
+    }),
+    now: () => clock.now,
     load: vi.fn(async () => saved),
     save: vi.fn(async (next: Record<string, StoredParty>) => {
       saved = next
@@ -69,6 +78,8 @@ function setup(tabs: Record<number, string> = { 7: `${WATCH}&t=42s` }) {
     rooms,
     connections,
     panel,
+    clock,
+    tabs,
     saved: () => saved,
     seed: (s: typeof saved) => (saved = s),
   }
@@ -172,16 +183,17 @@ describe('party rooms', () => {
     expect(await rooms.viewFor(7)).toBeNull()
   })
 
-  it('leaves when the tab moves to another video or closes, not on the same video', async () => {
-    const { rooms, deps } = setup({ 7: WATCH, 8: WATCH })
+  it('stays on the same video, and leaves when the tab closes', async () => {
+    const { rooms, deps, connections } = setup({ 7: WATCH, 8: WATCH })
     await rooms.start(7)
     await rooms.start(8)
     await rooms.tabUrlChanged(7, `${WATCH}&t=99`)
+    await rooms.tabUrlChanged(7, `${WATCH}#nightreel-party=K7xQ2m`)
+    await rooms.tabUrlChanged(7, WATCH) // the invite fragment stripped
     expect(deps.api.leave).not.toHaveBeenCalled()
-    await rooms.tabUrlChanged(7, 'https://www.youtube.com/watch?v=other123')
-    expect(deps.api.leave).toHaveBeenCalledTimes(1)
+    expect(connections[0]!.connection.video).not.toHaveBeenCalled()
     await rooms.tabClosed(8)
-    expect(deps.api.leave).toHaveBeenCalledTimes(2)
+    expect(deps.api.leave).toHaveBeenCalledTimes(1)
     expect(deps.sendToTab).not.toHaveBeenCalledWith(8, expect.anything())
   })
 
@@ -238,7 +250,7 @@ describe('party rooms', () => {
       const ctx = setup()
       await ctx.rooms.start(7)
       const { handlers, connection } = ctx.connections[0]!
-      handlers.onWelcome(playbackState(), 2, kai, { members, chat: [msg('m0')] })
+      handlers.onWelcome(playbackState(), 2, kai, { members, chat: [msg('m0')], video: null })
       ctx.deps.sendToTab.mockClear()
       ctx.deps.notifyLive.mockClear()
       return { ...ctx, handlers, connection }
@@ -354,10 +366,208 @@ describe('party rooms', () => {
       const { rooms, connection, handlers } = await welcomed()
       await rooms.setStatus(7, 'ad')
       vi.mocked(connection.status).mockClear()
-      handlers.onWelcome(playbackState({ seq: 5 }), 2, kai, { members, chat: [] })
+      handlers.onWelcome(playbackState({ seq: 5 }), 2, kai, { members, chat: [], video: null })
       expect(connection.status).toHaveBeenCalledWith('ad')
       // Chat history survives a reconnect whose welcome repeats or drops older messages.
       expect((await rooms.viewFor(7))?.chat.map((m) => m.id)).toEqual(['m0'])
+    })
+  })
+
+  describe('changing the video', () => {
+    const OTHER = 'https://www.youtube.com/watch?v=other12345'
+    const kai = { id: 'u1', display_name: 'Kai' }
+    const sam = { id: 'u2', display_name: 'Sam' }
+    const video = (watchUrl = OTHER, episodeId: string | null = null) => ({
+      watch_url: watchUrl,
+      provider: 'youtube',
+      episode_id: episodeId,
+    })
+
+    afterEach(() => vi.useRealTimers())
+
+    async function inParty(tabs: Record<number, string> = { 7: WATCH }) {
+      const ctx = setup(tabs)
+      await ctx.rooms.start(7)
+      const { handlers, connection } = ctx.connections[0]!
+      handlers.onWelcome(playbackState(), 2, kai, { members: [], chat: [], video: video(WATCH) })
+      ctx.deps.sendToTab.mockClear()
+      ctx.deps.notifyLive.mockClear()
+      return { ...ctx, handlers, connection }
+    }
+
+    it('moves the party when the viewer picks another video on the player', async () => {
+      const ctx = await inParty()
+      ctx.deps.episodeIdForUrl.mockResolvedValueOnce('e9')
+      await ctx.rooms.tabUrlChanged(7, `${OTHER}&t=3`)
+      expect(ctx.connection.video).toHaveBeenCalledWith(video(OTHER, 'e9'))
+      expect(ctx.deps.episodeIdForUrl).toHaveBeenCalledWith('youtube', OTHER)
+      expect(ctx.deps.api.leave).not.toHaveBeenCalled()
+      expect(ctx.deps.sendToTab).toHaveBeenCalledWith(7, {
+        type: 'party:video',
+        code: 'K7xQ2m',
+        watchUrl: OTHER,
+      })
+      expect(await ctx.rooms.viewFor(7)).toMatchObject({ watchUrl: OTHER, status: 'live' })
+      expect(ctx.saved()['7']).toMatchObject({ watchUrl: OTHER })
+      // The next event for the same video (YouTube fires several) sends nothing more.
+      await ctx.rooms.tabUrlChanged(7, OTHER)
+      expect(ctx.connection.video).toHaveBeenCalledTimes(1)
+      expect(ctx.deps.navigateTab).not.toHaveBeenCalled()
+    })
+
+    it('leaves when the tab goes off the player or to a page without a video', async () => {
+      for (const url of [
+        'https://example.com/',
+        'https://www.youtube.com/',
+        'https://www.youtube.com/results?search_query=harbor',
+        '',
+      ]) {
+        const ctx = await inParty()
+        await ctx.rooms.tabUrlChanged(7, url)
+        expect(ctx.deps.api.leave).toHaveBeenCalledWith('K7xQ2m')
+        expect(ctx.connection.video).not.toHaveBeenCalled()
+        expect(await ctx.rooms.viewFor(7)).toBeNull()
+      }
+    })
+
+    it('follows a change from someone else: loads the video without echoing it', async () => {
+      const ctx = await inParty()
+      ctx.handlers.onVideo(video(OTHER), sam, 7)
+      ctx.handlers.onState(playbackState({ seq: 7, position: 0 }))
+      // The tab hears about the video before the state for it.
+      expect(ctx.deps.sendToTab.mock.calls.map(([, m]) => m.type)).toEqual([
+        'party:video',
+        'party:system',
+        'party:state',
+      ])
+      await vi.waitFor(() => expect(ctx.deps.navigateTab).toHaveBeenCalledWith(7, OTHER))
+
+      // Chrome reports the old page loading, then the new one: neither is the viewer's change.
+      await ctx.rooms.tabUrlChanged(7, WATCH)
+      await ctx.rooms.tabUrlChanged(7, OTHER)
+      expect(ctx.connection.video).not.toHaveBeenCalled()
+      expect(ctx.deps.api.leave).not.toHaveBeenCalled()
+
+      const line = { id: 'video-7', text: 'Sam switched to a new video', at: 1_000.25 }
+      expect(ctx.deps.notifyLive).toHaveBeenCalledWith(7, {
+        type: 'party:system',
+        code: 'K7xQ2m',
+        line,
+        pill: true,
+      })
+      expect(await ctx.rooms.viewFor(7)).toMatchObject({ watchUrl: OTHER, system: [line] })
+
+      // Once landed, going back to the old video is the viewer's own change again.
+      await ctx.rooms.tabUrlChanged(7, WATCH)
+      expect(ctx.connection.video).toHaveBeenCalledWith(video(WATCH))
+    })
+
+    it('treats the old URL as the viewer’s change once the navigation has had its time', async () => {
+      const ctx = await inParty()
+      ctx.deps.navigateTab.mockImplementationOnce(async () => undefined) // never lands
+      ctx.handlers.onVideo(video(OTHER), sam, 7)
+      await vi.waitFor(() => expect(ctx.deps.navigateTab).toHaveBeenCalled())
+      await ctx.rooms.tabUrlChanged(7, WATCH)
+      expect(ctx.connection.video).not.toHaveBeenCalled()
+      ctx.clock.now += EXPECTED_NAVIGATION_MS
+      await ctx.rooms.tabUrlChanged(7, WATCH)
+      expect(ctx.connection.video).toHaveBeenCalledWith(video(WATCH))
+    })
+
+    it('does not reload the tab for the viewer’s own change, and says “You”', async () => {
+      const ctx = await inParty()
+      ctx.tabs[7] = OTHER
+      await ctx.rooms.tabUrlChanged(7, OTHER)
+      ctx.handlers.onVideo(video(OTHER), kai, 8)
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(ctx.deps.navigateTab).not.toHaveBeenCalled()
+      expect(ctx.deps.sendToTab).toHaveBeenCalledWith(7, {
+        type: 'party:system',
+        code: 'K7xQ2m',
+        line: expect.objectContaining({ text: 'You switched to a new video' }),
+        pill: false,
+      })
+    })
+
+    it('goes to the party’s video when a (re)connect’s welcome names another one', async () => {
+      const ctx = await inParty()
+      ctx.handlers.onWelcome(playbackState({ seq: 9 }), 2, kai, {
+        members: [],
+        chat: [],
+        video: video(OTHER),
+      })
+      await vi.waitFor(() => expect(ctx.deps.navigateTab).toHaveBeenCalledWith(7, OTHER))
+      expect(await ctx.rooms.viewFor(7)).toMatchObject({ watchUrl: OTHER })
+      await ctx.rooms.tabUrlChanged(7, OTHER)
+      expect(ctx.connection.video).not.toHaveBeenCalled()
+    })
+
+    it('sends a change made while disconnected once the welcome comes', async () => {
+      const ctx = await inParty()
+      vi.mocked(ctx.connection.video).mockReturnValueOnce(false)
+      await ctx.rooms.tabUrlChanged(7, OTHER)
+      ctx.handlers.onWelcome(playbackState({ seq: 9 }), 2, kai, {
+        members: [],
+        chat: [],
+        video: video(WATCH),
+      })
+      expect(ctx.connection.video).toHaveBeenLastCalledWith(video(OTHER))
+      expect(ctx.connection.video).toHaveBeenCalledTimes(2)
+      expect(ctx.deps.navigateTab).not.toHaveBeenCalled()
+    })
+
+    it('shows the server refusing a change too soon, and sends it again after the limit', async () => {
+      vi.useFakeTimers()
+      const ctx = await inParty()
+      await ctx.rooms.tabUrlChanged(7, OTHER)
+      ctx.handlers.onError('Wait a moment before changing the video.')
+      expect(ctx.deps.notifyLive).toHaveBeenCalledWith(7, {
+        type: 'party:system',
+        code: 'K7xQ2m',
+        line: expect.objectContaining({ text: 'Wait a moment before changing the video.' }),
+        pill: true,
+      })
+      expect(ctx.deps.notifyLive).not.toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ type: 'party:error' }),
+      )
+      expect(ctx.connection.video).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(VIDEO_RETRY_MS)
+      expect(ctx.connection.video).toHaveBeenCalledTimes(2)
+      // Other errors (e.g. chat too fast) still go to the chat box.
+      ctx.clock.now += 10_000
+      ctx.handlers.onError("You're sending messages too quickly.")
+      expect(ctx.deps.notifyLive).toHaveBeenCalledWith(7, {
+        type: 'party:error',
+        code: 'K7xQ2m',
+        detail: "You're sending messages too quickly.",
+      })
+    })
+
+    it('drops a refused change of ours when someone else’s comes in', async () => {
+      vi.useFakeTimers()
+      const ctx = await inParty()
+      await ctx.rooms.tabUrlChanged(7, OTHER)
+      ctx.handlers.onError('Wait a moment before changing the video.')
+      ctx.handlers.onVideo(video(WATCH), sam, 9)
+      await vi.advanceTimersByTimeAsync(VIDEO_RETRY_MS)
+      expect(ctx.connection.video).toHaveBeenCalledTimes(1)
+      expect(await ctx.rooms.viewFor(7)).toMatchObject({ watchUrl: WATCH })
+    })
+
+    it('joins from an invite opened after the party moved to another video', async () => {
+      const ctx = setup({ 7: OTHER })
+      ctx.deps.api.get.mockResolvedValueOnce(ok(party({ watch_url: OTHER })))
+      ctx.deps.api.join.mockResolvedValueOnce(ok(party({ watch_url: OTHER })))
+      expect(await ctx.rooms.joinRequest(7, OTHER, 'K7xQ2m', false)).toMatchObject({ ok: true })
+      expect(await ctx.rooms.joinRequest(7, `${OTHER}&t=4`, 'K7xQ2m', true)).toMatchObject({
+        ok: true,
+        data: { watchUrl: OTHER },
+      })
+      // An invite opened on the party's old video is still refused.
+      ctx.deps.api.get.mockResolvedValueOnce(ok(party({ watch_url: OTHER })))
+      expect(await ctx.rooms.joinRequest(8, WATCH, 'K7xQ2m', false)).toEqual(fail('rejected'))
     })
   })
 })

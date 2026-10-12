@@ -15,9 +15,9 @@ import {
 } from '@nightreel/ui'
 import { useEffect, useState } from 'react'
 
-import { ContinueWatchingList } from '../../src/features/continue-watching/ContinueWatchingList'
+import { HistoryList, type LoadHistory } from '../../src/features/history/HistoryList'
 import { PartyPanel } from '../../src/features/party/PartyPanel'
-import { PartyChat, PartyMembers } from '../../src/features/party/PartyRoom'
+import { PartyChat, PartyMembers, softAvatarStyle } from '../../src/features/party/PartyRoom'
 import {
   usePageVisible,
   usePanelPresence,
@@ -32,7 +32,7 @@ import type { Profile } from '../../src/lib/types'
 import { onBroadcast, send, type SessionState } from '../../src/messaging/protocol'
 import { useAsync } from '../../src/messaging/useAsync'
 
-type PanelTab = 'home' | 'chat' | 'members'
+type PanelTab = 'history' | 'chat' | 'members'
 
 async function activeTabId(): Promise<number | null> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -111,7 +111,14 @@ function AccountMenu({ profile, onSignOut }: AccountMenuProps) {
             className="nr-panel__account"
             aria-label={`Account menu for ${profile.name}`}
           >
-            <Avatar name={profile.name} color={profile.avatar_color} size="sm" decorative />
+            <Avatar
+              name={profile.name}
+              color={profile.avatar_color}
+              style={softAvatarStyle(profile.avatar_color)}
+              className="nr-avatar--soft"
+              size="sm"
+              decorative
+            />
           </button>
         ) : (
           <IconButton icon="user" size="sm" variant="ghost" aria-label="Account menu" />
@@ -154,7 +161,7 @@ function useActiveTab() {
 
 function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const tabId = useActiveTab()
-  const [panelTab, setPanelTab] = useState<PanelTab>('home')
+  const [panelTab, setPanelTab] = useState<PanelTab>('history')
   const [profiles, reloadProfiles] = useAsync(() => send({ type: 'profiles:list' }), [])
   const room = usePartyRoom(tabId)
   const visible = usePageVisible()
@@ -162,10 +169,10 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   // "Reading the chat" is what clears unread messages and hides bubbles over the player.
   usePanelPresence(tabId, party !== null && panelTab === 'chat' && visible)
 
-  // Open the chat when this tab joins a party; fall back to Home when it ends.
+  // Open the chat when this tab joins a party; fall back to History when it ends.
   const partyCode = party?.code ?? null
   useEffect(() => {
-    setPanelTab(partyCode ? 'chat' : 'home')
+    setPanelTab(partyCode ? 'chat' : 'history')
   }, [partyCode])
 
   const listed = profiles.status === 'done' && profiles.data.ok ? profiles.data.data : null
@@ -197,6 +204,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   } else {
     home = (
       <>
+        {party ? null : <PartyPanel tabId={tabId} />}
         {listed.profiles.length > 1 ? (
           <ProfileSwitcher
             profiles={listed.profiles}
@@ -204,8 +212,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
             onSelect={(id) => void select(id)}
           />
         ) : null}
-        {party ? null : <PartyPanel tabId={tabId} />}
-        <Activity profileId={activeProfileId} />
+        <Activity profileId={activeProfileId} titled={!party} />
       </>
     )
   }
@@ -234,18 +241,24 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
         <TabsList aria-label="Nightreel">
           <TabsTrigger value="chat">
             Chat
-            {unread > 0 ? <span className="nr-tab-count">{unread}</span> : null}
+            {unread > 0 ? (
+              <span className="nr-tab-count nr-tab-count--unread">
+                {unread > 99 ? '99+' : unread}
+                <span className="nr-visually-hidden"> unread</span>
+              </span>
+            ) : null}
           </TabsTrigger>
           <TabsTrigger value="members">
             Members
             <span className="nr-tab-count">{party.members.length || party.memberCount}</span>
           </TabsTrigger>
-          <TabsTrigger value="home">Home</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
         <TabsContent value="chat" className="nr-panel__tab nr-panel__tab--chat">
           <PartyChat
             youId={party.youId}
             chat={party.chat}
+            system={party.system}
             connection={party.status === 'invited' ? 'connecting' : party.status}
             error={room.error}
             onSend={room.sendChat}
@@ -257,7 +270,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
           <PartyMembers members={party.members} youId={party.youId} />
           <PartyPanel tabId={tabId} />
         </TabsContent>
-        <TabsContent value="home" className="nr-panel__tab nr-panel__stack">
+        <TabsContent value="history" className="nr-panel__tab nr-panel__stack">
           {home}
         </TabsContent>
       </Tabs>
@@ -265,20 +278,22 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   )
 }
 
-/** Continue watching and the streak line for the active profile. */
-function Activity({ profileId }: { profileId: string }) {
-  const [history] = useAsync(() => send({ type: 'history:continue' }), [profileId])
+const loadHistory: LoadHistory = (cursor) =>
+  send(cursor ? { type: 'history:list', cursor } : { type: 'history:list' })
+
+/** The streak line and the active profile's watch history. */
+function Activity({ profileId, titled }: { profileId: string; titled: boolean }) {
   const [streak] = useAsync(() => send({ type: 'streak:get' }), [profileId])
   const episodesToday =
     streak.status === 'done' && streak.data.ok ? streak.data.data.episodes_today : 0
 
   return (
-    <section className="nr-panel__section" aria-labelledby="cw-title">
-      <h2 id="cw-title" className="nr-panel__title">
-        Continue watching
+    <section className="nr-panel__section" aria-labelledby="history-title">
+      <h2 id="history-title" className={titled ? 'nr-panel__title' : 'nr-visually-hidden'}>
+        History
       </h2>
       <StreakLine episodesToday={episodesToday} />
-      <ContinueWatchingList state={history} />
+      <HistoryList profileId={profileId} load={loadHistory} />
     </section>
   )
 }

@@ -321,6 +321,25 @@ export function createSyncEngine(deps: SyncEngineDeps) {
       seeding = false
     },
 
+    /**
+     * The party moved to another video: forget everything about the old one (the newest
+     * seq seen, echo expectations, nudges, buffering) so the next state, whatever its
+     * seq, is applied to the new video once it is on the page.
+     */
+    reset() {
+      endNudge()
+      lastSeq = Number.NEGATIVE_INFINITY
+      state = null
+      pending = false
+      seeding = false
+      buffering = false
+      reportedAt = Number.NEGATIVE_INFINITY
+      expectPlayUntil = 0
+      expectPauseUntil = 0
+      expectSeek = null
+      setBlocked(false)
+    },
+
     /** "Click to sync": runs inside a click, so play() is allowed this time. */
     resync() {
       setBlocked(false)

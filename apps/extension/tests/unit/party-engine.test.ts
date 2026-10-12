@@ -303,3 +303,39 @@ describe('sync engine', () => {
     expect(report).toHaveBeenCalledOnce()
   })
 })
+
+describe('sync engine: the party changes video', () => {
+  it('forgets the old video’s seq and echo state, then applies the new video’s state', () => {
+    const { engine, video, clock, report } = setup({ paused: false, currentTime: 105 })
+    expect(engine.receive(state({ seq: 20 }), 0)).toBe(true)
+    // A seek the engine just made would normally swallow the next seeked event as its echo.
+    engine.receive(state({ seq: 21, position: 300 }), 0)
+    expect(video.currentTime).toBe(305)
+
+    engine.reset()
+    expect(engine.lastSeq).toBe(Number.NEGATIVE_INFINITY)
+    expect(engine.buffering).toBe(false)
+    expect(engine.nudging).toBe(false)
+
+    // The new video starts from 0 and its first state may carry any seq.
+    video.currentTime = 0
+    clock.now = 1_000_000
+    expect(engine.receive(state({ seq: 3, position: 0, updated_at: 1_000 }), 0)).toBe(true)
+    expect(video.currentTime).toBe(0)
+    // Old echo expectations are gone: the viewer's seek on the new video is reported.
+    video.currentTime = 40
+    engine.handleEvent('seeked')
+    expect(report).toHaveBeenLastCalledWith({ action: 'seek', position: 40, rate: 1 })
+  })
+
+  it('holds the new state until a video is attached', () => {
+    const { engine, video } = setup({ paused: true, currentTime: 0 })
+    engine.receive(state({ seq: 5 }), 0)
+    engine.reset()
+    engine.setVideo(null)
+    expect(engine.receive(state({ seq: 1, position: 10, paused: true }), 0)).toBe(true)
+    engine.setVideo(video)
+    engine.tick()
+    expect(video.currentTime).toBe(10)
+  })
+})

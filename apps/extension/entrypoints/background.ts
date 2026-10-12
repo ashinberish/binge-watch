@@ -22,8 +22,10 @@ export default defineBackground(() => {
     void forgetTab(tabId)
     void rooms.tabClosed(tabId)
   })
-  // Navigating a party tab to another video (or away from the player) leaves the party.
-  // Off our sites the URL is hidden from us (no host permission); that counts as leaving.
+  // Another video on the same player moves the tab's party there (rooms.tabUrlChanged
+  // tells the viewer's own change from a navigation we started); leaving the player
+  // leaves the party. Off our sites the URL is hidden from us (no host permission);
+  // that counts as leaving.
   chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (change.url !== undefined || change.status === 'loading') {
       void rooms.tabUrlChanged(tabId, tab.url ?? '')
