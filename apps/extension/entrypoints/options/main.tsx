@@ -1,16 +1,26 @@
-import '@nightreel/ui/tokens.css'
 import '@nightreel/ui/styles.css'
+import '../../src/styles/pages.css'
+import './options.css'
 
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import { SettingsForm } from '../../src/features/settings/SettingsForm'
+
 function Options() {
-  // TODO(phase 3): supported sites list and countdown length, saved to chrome.storage.local
   return (
-    <main style={{ padding: 'var(--nr-space-8)', color: 'var(--nr-ink)' }}>
-      <h1>Settings</h1>
-      <p>Choose which sites Nightreel follows and how long the next-episode countdown runs.</p>
+    <main className="nr-page">
+      <span className="nr-wordmark">
+        nightreel<span className="nr-wordmark__dot">.</span>
+      </span>
+      <h1 className="nr-page__title">Settings</h1>
+      <SettingsForm />
     </main>
   )
 }
 
-createRoot(document.getElementById('root')!).render(<Options />)
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <Options />
+  </StrictMode>,
+)

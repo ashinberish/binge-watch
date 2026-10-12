@@ -1,45 +1,26 @@
-import { adapterFor } from '../src/adapters/registry'
-import { loadSession, setAccessToken } from '../src/lib/api'
-import type { Message, SessionState } from '../src/messaging/protocol'
-import { sessionStore } from '../src/storage'
-import { flush, push } from '../src/sync/queue'
+import { createHandler } from '../src/background/handler'
+import { forgetTab, scheduler, services } from '../src/background/services'
+import { session } from '../src/lib/api'
 
 const SYNC_ALARM = 'nightreel:sync'
 
 export default defineBackground(() => {
-  chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 1 })
+  const handle = createHandler(services, chrome.runtime.getURL(''))
+
+  void chrome.alarms.get(SYNC_ALARM).then((alarm) => {
+    if (!alarm) void chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 1 })
+  })
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === SYNC_ALARM) void flush()
+    if (alarm.name === SYNC_ALARM) void session.load().then(scheduler.now)
   })
 
-  chrome.runtime.onMessage.addListener((message: Message, sender, reply) => {
-    void handle(message, sender).then(reply)
+  chrome.tabs.onRemoved.addListener((tabId) => void forgetTab(tabId))
+
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    void session
+      .load()
+      .then(() => handle(message, sender))
+      .then(reply, () => reply(undefined))
     return true // keep the channel open for the async reply
   })
 })
-
-async function handle(message: Message, sender: chrome.runtime.MessageSender) {
-  switch (message.type) {
-    case 'progress': {
-      // Only accept progress from tabs on players we actually support.
-      if (!sender.tab?.url || !adapterFor(sender.tab.url)) return { ok: false }
-      await push({ adapter: message.adapter, snapshot: message.snapshot, queuedAt: Date.now() })
-      return { ok: true }
-    }
-    case 'session:get':
-      return sessionState()
-    case 'session:sign-in':
-      // TODO(phase 3): chrome.identity.launchWebAuthFlow against the web app's /extension/connect
-      return sessionState()
-    case 'session:sign-out':
-      await sessionStore.clear()
-      setAccessToken(null)
-      return { ok: true }
-  }
-}
-
-async function sessionState(): Promise<SessionState> {
-  const token = await loadSession()
-  const { displayName } = await sessionStore.get()
-  return { signedIn: token !== null, displayName: displayName ?? null }
-}

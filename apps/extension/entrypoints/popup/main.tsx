@@ -1,5 +1,6 @@
 import '@nightreel/ui/tokens.css'
 import '@nightreel/ui/styles.css'
+import '../../src/styles/pages.css'
 import './popup.css'
 
 import { StrictMode } from 'react'

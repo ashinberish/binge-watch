@@ -1,34 +1,51 @@
+/* Next-episode card, rendered in the overlay's shadow root (WXT maps :root to :host). */
 .nr-next-card {
   position: fixed;
-  right: var(--nr-space-6, 24px);
-  bottom: var(--nr-space-16, 64px);
-  display: flex;
-  gap: var(--nr-space-4, 16px);
+  right: var(--nr-space-6);
+  bottom: var(--nr-space-16);
+  z-index: 2147483647;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--nr-space-3) var(--nr-space-4);
   align-items: center;
-  padding: var(--nr-space-4, 16px);
-  background: var(--nr-surface-raised, #1f1f23);
-  border-radius: var(--nr-radius-lg, 8px);
-  box-shadow: var(--nr-shadow-popup, 0 16px 48px rgba(0, 0, 0, 0.7));
-  color: var(--nr-ink, #f5f5f6);
-  font-family: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  width: min(380px, calc(100vw - 2 * var(--nr-space-6)));
+  padding: var(--nr-space-4);
+  background: var(--nr-color-surface-raised);
+  border-radius: var(--nr-radius-lg);
+  box-shadow: var(--nr-shadow-popup);
+  color: var(--nr-color-ink);
+  font: var(--nr-type-body-sm);
 }
 
 .nr-next-card__title {
   margin: 0;
-  font:
-    600 18px/24px 'Archivo',
-    sans-serif;
-}
-
-.nr-next-card__meta {
-  margin: 0;
-  font:
-    400 14px/20px 'Archivo',
-    sans-serif;
-  color: var(--nr-ink-muted, #a9a9b2);
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
 }
 
 .nr-next-card__actions {
+  grid-column: 1 / -1;
   display: flex;
-  gap: var(--nr-space-2, 8px);
+  justify-content: flex-end;
+  gap: var(--nr-space-2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nr-next-card {
+    animation: nr-next-card-in var(--nr-duration-base) var(--nr-ease-out);
+  }
+}
+
+/* No draining ring for viewers who asked for less motion; the number still counts down. */
+@media (prefers-reduced-motion: reduce) {
+  .nr-countdown__ring {
+    animation: none;
+  }
+}
+
+@keyframes nr-next-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }

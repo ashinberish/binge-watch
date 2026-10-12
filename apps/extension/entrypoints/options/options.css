@@ -1,0 +1,39 @@
+.nr-page {
+  display: grid;
+  gap: var(--nr-space-6);
+  width: min(100%, 640px);
+  margin: 0 auto;
+  padding: var(--nr-space-8) var(--nr-space-4);
+  color: var(--nr-color-ink);
+  font: var(--nr-type-body-sm);
+}
+
+.nr-page__title {
+  margin: 0;
+  font: var(--nr-type-title-1);
+}
+
+.nr-settings__field {
+  display: grid;
+  gap: var(--nr-space-2);
+  max-width: 240px;
+}
+
+.nr-settings__label {
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+}
+
+.nr-sites {
+  display: grid;
+  gap: var(--nr-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nr-sites__item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--nr-space-4);
+}

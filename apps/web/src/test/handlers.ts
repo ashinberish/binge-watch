@@ -59,4 +59,9 @@ export const handlers = [
   }),
   http.get(`${API}/history/continue-watching`, () => HttpResponse.json(continueWatching)),
   http.get(`${API}/streaks/current`, () => HttpResponse.json(streak)),
+  http.post(`${API}/auth/extension-code`, ({ request }) =>
+    authed(request)
+      ? HttpResponse.json({ code: 'code-1', expires_in: 60 }, { status: 201 })
+      : problemJson(401, 'Unauthorized'),
+  ),
 ]

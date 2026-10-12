@@ -2,6 +2,8 @@ import type { PlayerAdapter } from '../types'
 
 export const youtube: PlayerAdapter = {
   id: 'youtube',
+  name: 'YouTube',
+  site: 'youtube.com',
   matches: (url) => url.hostname === 'www.youtube.com' && url.pathname === '/watch',
   findVideo: (doc) => doc.querySelector<HTMLVideoElement>('video.html5-main-video'),
   snapshot(doc, video) {
@@ -17,4 +19,11 @@ export const youtube: PlayerAdapter = {
       durationSeconds: Math.floor(video.duration),
     }
   },
+  playNext(doc) {
+    const next = doc.querySelector<HTMLElement>('.ytp-next-button')
+    if (!next || next.getAttribute('aria-disabled') === 'true') return false
+    next.click()
+    return true
+  },
+  isAd: (doc) => doc.querySelector('.html5-video-player.ad-showing') !== null,
 }

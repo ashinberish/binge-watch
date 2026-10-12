@@ -1,0 +1,52 @@
+body {
+  margin: 0;
+  background: var(--nr-color-surface);
+}
+
+.nr-season {
+  display: grid;
+  gap: var(--nr-space-2);
+}
+
+.nr-season__title {
+  margin: 0;
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+  color: var(--nr-color-ink-muted);
+}
+
+.nr-episodes {
+  display: grid;
+  gap: var(--nr-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nr-episodes__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--nr-space-3);
+  align-items: baseline;
+  padding: var(--nr-space-2) var(--nr-space-3);
+  border-radius: var(--nr-radius-md);
+}
+
+.nr-episodes__item[aria-current='true'] {
+  background: var(--nr-color-surface-raised);
+  box-shadow: inset 2px 0 0 var(--nr-color-brand);
+}
+
+.nr-episodes__label,
+.nr-episodes__meta {
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-caption);
+  letter-spacing: var(--nr-tracking-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.nr-episodes__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

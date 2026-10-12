@@ -18,6 +18,7 @@ import { Route as AppProfilesRouteImport } from './routes/_app/profiles'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
+import { Route as AppExtensionConnectRouteImport } from './routes/_app/extension.connect'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -62,6 +63,11 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppExtensionConnectRoute = AppExtensionConnectRouteImport.update({
+  id: '/extension/connect',
+  path: '/extension/connect',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/extension/connect': typeof AppExtensionConnectRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/extension/connect': typeof AppExtensionConnectRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -92,6 +100,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
+  '/_app/extension/connect': typeof AppExtensionConnectRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/register'
+    | '/extension/connect'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -112,6 +122,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/register'
+    | '/extension/connect'
   id:
     | '__root__'
     | '/'
@@ -123,6 +134,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_auth/login'
     | '/_auth/register'
+    | '/_app/extension/connect'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -196,6 +208,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRegisterRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/extension/connect': {
+      id: '/_app/extension/connect'
+      path: '/extension/connect'
+      fullPath: '/extension/connect'
+      preLoaderRoute: typeof AppExtensionConnectRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -204,6 +223,7 @@ interface AppRouteChildren {
   AppPlanRoute: typeof AppPlanRoute
   AppProfilesRoute: typeof AppProfilesRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppExtensionConnectRoute: typeof AppExtensionConnectRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -211,6 +231,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPlanRoute: AppPlanRoute,
   AppProfilesRoute: AppProfilesRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppExtensionConnectRoute: AppExtensionConnectRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
