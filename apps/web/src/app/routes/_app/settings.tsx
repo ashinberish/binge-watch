@@ -6,7 +6,6 @@ import { DisplayNameForm } from '@/features/settings'
 import { useUiStore } from '@/stores/ui'
 
 export const Route = createFileRoute('/_app/settings')({
-  staticData: { theme: 'light' },
   component: SettingsPage,
 })
 
@@ -33,7 +32,7 @@ function SettingsPage() {
           <CardBody>
             <Toggle
               label="Light theme"
-              description="Use light colours everywhere. Account pages are always light."
+              description="Use light colours everywhere in Nightreel."
               checked={theme === 'light'}
               onCheckedChange={(on) => setTheme(on ? 'light' : 'dark')}
             />

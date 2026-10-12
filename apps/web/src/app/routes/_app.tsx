@@ -8,7 +8,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from '@nightreel/ui'
-import { createFileRoute, Outlet, redirect, useMatches, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Outlet, redirect, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { AppShell, TopNav } from '@/components/layout'
 import { ensureSession, useLogout, useMe, useSession } from '@/features/auth'
@@ -24,11 +24,8 @@ export const Route = createFileRoute('/_app')({
   component: AppLayout,
 })
 
-const links = [
-  { to: '/history', label: 'Continue watching' },
-  { to: '/profiles', label: 'Profiles' },
-  { to: '/settings', label: 'Settings' },
-] as const
+// Profiles and Settings live in the account menu, not the top bar.
+const links = [{ to: '/history', label: 'Continue watching' }] as const
 
 function AccountMenu() {
   const navigate = useNavigate()
@@ -61,7 +58,7 @@ function AccountMenu() {
       <MenuContent>
         <MenuLabel>{me.data?.display_name ?? 'Your account'}</MenuLabel>
         <MenuItem icon="users" onSelect={() => void navigate({ to: '/profiles' })}>
-          Switch profile
+          Profiles
         </MenuItem>
         <MenuItem icon="settings" onSelect={() => void navigate({ to: '/settings' })}>
           Settings
@@ -86,9 +83,6 @@ function AccountMenu() {
 function AppLayout() {
   const navigate = useNavigate()
   const signedIn = useSession((s) => s.accessToken !== null)
-  const theme = useMatches({
-    select: (matches) => matches.findLast((m) => m.staticData.theme)?.staticData.theme,
-  })
 
   // Refresh failed mid-session (token revoked or expired): send the viewer to sign in.
   useEffect(() => {
@@ -96,7 +90,7 @@ function AppLayout() {
   }, [signedIn, navigate])
 
   return (
-    <AppShell theme={theme} header={<TopNav links={[...links]} actions={<AccountMenu />} />}>
+    <AppShell header={<TopNav links={[...links]} actions={<AccountMenu />} />}>
       <Outlet />
     </AppShell>
   )

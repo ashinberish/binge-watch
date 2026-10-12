@@ -6,7 +6,7 @@ import type { ProfileId } from '@/lib/api'
 interface UiState {
   /** Profile chosen on "Who's watching?". Scopes history and streak queries. */
   activeProfileId: ProfileId | null
-  /** Preferred theme for the main app. Account pages always use light. */
+  /** Preferred theme, applied to every page. */
   theme: Theme
   setActiveProfile: (id: ProfileId | null) => void
   setTheme: (theme: Theme) => void

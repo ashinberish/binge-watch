@@ -1,4 +1,3 @@
-import type { Theme } from '@nightreel/ui'
 import { createRouter } from '@tanstack/react-router'
 import { ErrorFallback } from '@/components/feedback'
 import { queryClient } from '@/lib/query-client'
@@ -17,9 +16,5 @@ export const router = createRouter({
 declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router
-  }
-  interface StaticDataRouteOption {
-    /** Force a theme for this page (account pages use light). */
-    theme?: Theme
   }
 }

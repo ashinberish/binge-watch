@@ -3,7 +3,6 @@ import { PageHeader } from '@/components/layout'
 import { PlanPlaceholder } from '@/features/billing'
 
 export const Route = createFileRoute('/_app/plan')({
-  staticData: { theme: 'light' },
   component: PlanPage,
 })
 

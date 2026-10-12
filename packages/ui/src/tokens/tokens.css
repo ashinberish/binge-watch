@@ -54,6 +54,7 @@
   --nr-color-focus: #141416;
 
   --nr-shadow-lift: 0 8px 24px rgba(20, 20, 22, 0.16);
+  --nr-shadow-popup: 0 16px 48px rgba(20, 20, 22, 0.2);
 }
 
 :root {

@@ -53,7 +53,7 @@
   overflow: hidden;
   border-radius: var(--nr-radius-lg);
   background: var(--nr-color-surface-raised);
-  box-shadow: var(--nr-shadow-popup);
+  box-shadow: var(--nr-shadow-lift);
 }
 
 .nr-select__viewport {

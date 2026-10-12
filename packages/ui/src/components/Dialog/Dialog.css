@@ -21,7 +21,7 @@
   border-radius: var(--nr-radius-lg);
   background: var(--nr-color-surface-raised);
   color: var(--nr-color-ink);
-  box-shadow: var(--nr-shadow-popup);
+  box-shadow: var(--nr-shadow-lift);
   transform: translate(-50%, -50%);
   animation: nr-fade-in var(--nr-duration-base) ease-out;
 }

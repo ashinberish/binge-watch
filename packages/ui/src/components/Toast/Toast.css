@@ -22,7 +22,7 @@
   border-radius: var(--nr-radius-lg);
   background: var(--nr-color-surface-overlay);
   color: var(--nr-color-ink);
-  box-shadow: var(--nr-shadow-popup);
+  box-shadow: var(--nr-shadow-lift);
 }
 
 .nr-toast:focus-visible {
@@ -33,13 +33,13 @@
 .nr-toast--success {
   box-shadow:
     inset 4px 0 0 var(--nr-color-accent),
-    var(--nr-shadow-popup);
+    var(--nr-shadow-lift);
 }
 
 .nr-toast--danger {
   box-shadow:
     inset 4px 0 0 var(--nr-color-danger),
-    var(--nr-shadow-popup);
+    var(--nr-shadow-lift);
 }
 
 .nr-toast__text {
