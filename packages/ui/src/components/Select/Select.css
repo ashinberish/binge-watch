@@ -1,0 +1,92 @@
+.nr-select__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nr-space-2);
+  width: 100%;
+  height: var(--nr-size-control-height);
+  padding: 0 var(--nr-space-3);
+  border: 1px solid var(--nr-color-border);
+  border-radius: var(--nr-radius-md);
+  background: var(--nr-color-surface);
+  color: var(--nr-color-ink);
+  font: var(--nr-type-body);
+  cursor: pointer;
+}
+
+.nr-select__trigger:hover {
+  border-color: var(--nr-color-border-strong);
+}
+
+.nr-select__trigger:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-select__trigger[data-placeholder] {
+  color: var(--nr-color-ink-subtle);
+}
+
+.nr-select__trigger[aria-invalid='true'] {
+  border-color: var(--nr-color-danger);
+}
+
+.nr-select__trigger:disabled {
+  opacity: var(--nr-opacity-disabled);
+  pointer-events: none;
+}
+
+.nr-select__trigger--sm {
+  height: var(--nr-size-control-height-sm);
+  font: var(--nr-type-body-sm);
+}
+
+.nr-select__chevron {
+  display: inline-flex;
+  color: var(--nr-color-ink-muted);
+}
+
+.nr-select__content {
+  z-index: 50;
+  min-width: var(--radix-select-trigger-width);
+  max-height: var(--radix-select-content-available-height);
+  overflow: hidden;
+  border-radius: var(--nr-radius-lg);
+  background: var(--nr-color-surface-raised);
+  box-shadow: var(--nr-shadow-popup);
+}
+
+.nr-select__viewport {
+  padding: var(--nr-space-1);
+}
+
+.nr-select__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nr-space-2);
+  min-height: var(--nr-size-control-height-sm);
+  padding: 0 var(--nr-space-3);
+  border-radius: var(--nr-radius-md);
+  font: var(--nr-type-body-sm);
+  color: var(--nr-color-ink);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.nr-select__item[data-highlighted] {
+  background: var(--nr-color-surface-overlay);
+  outline: var(--nr-focus-ring);
+  outline-offset: calc(var(--nr-focus-offset) * -1);
+}
+
+.nr-select__item[data-disabled] {
+  opacity: var(--nr-opacity-disabled);
+  pointer-events: none;
+}
+
+.nr-select__indicator {
+  display: inline-flex;
+}

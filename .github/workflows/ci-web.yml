@@ -2,10 +2,10 @@ name: CI · Web & packages
 
 on:
   pull_request:
-    paths: ["apps/web/**", "packages/**", "pnpm-lock.yaml", ".github/workflows/ci-web.yml"]
+    paths: ['apps/web/**', 'packages/**', 'pnpm-lock.yaml', '.github/workflows/ci-web.yml']
   push:
     branches: [main]
-    paths: ["apps/web/**", "packages/**"]
+    paths: ['apps/web/**', 'packages/**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

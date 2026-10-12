@@ -1,0 +1,2 @@
+/* Archivo (UI) and Archivo Narrow (display titles only). Import once per app, before tokens.css. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@700&display=swap');

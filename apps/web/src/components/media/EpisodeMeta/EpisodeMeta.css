@@ -1,0 +1,5 @@
+.nr-episode-meta {
+  font: var(--nr-type-body-sm);
+  color: var(--nr-color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}

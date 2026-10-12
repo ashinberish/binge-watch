@@ -1,0 +1,13 @@
+.nr-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nr-space-4);
+  margin-top: var(--nr-space-6);
+}
+
+.nr-pagination__status {
+  font: var(--nr-type-body-sm);
+  color: var(--nr-color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}

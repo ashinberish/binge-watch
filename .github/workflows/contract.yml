@@ -3,7 +3,7 @@ name: API contract
 # Fails when packages/api-client no longer matches what FastAPI serves.
 on:
   pull_request:
-    paths: ["apps/api/**", "packages/api-client/**"]
+    paths: ['apps/api/**', 'packages/api-client/**']
 
 jobs:
   drift:

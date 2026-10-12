@@ -1,0 +1,24 @@
+.nr-field {
+  display: grid;
+  gap: var(--nr-space-2);
+}
+
+.nr-field__label {
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+  color: var(--nr-color-ink);
+}
+
+.nr-field__hint,
+.nr-field__error {
+  margin: 0;
+  font: var(--nr-type-body-sm);
+}
+
+.nr-field__hint {
+  color: var(--nr-color-ink-muted);
+}
+
+.nr-field__error {
+  color: var(--nr-color-danger);
+}

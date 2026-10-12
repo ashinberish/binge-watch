@@ -1,0 +1,13 @@
+.nr-auth-form {
+  display: grid;
+  gap: var(--nr-space-4);
+}
+
+.nr-auth-form__error {
+  margin: 0;
+  padding: var(--nr-space-3) var(--nr-space-4);
+  border-radius: var(--nr-radius-md);
+  background: var(--nr-color-surface-overlay);
+  color: var(--nr-color-danger);
+  font: var(--nr-type-body-sm);
+}

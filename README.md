@@ -33,13 +33,13 @@ make dev       # API on :8000, web on :5173, extension in watch mode
 
 Load the extension in Chrome from `apps/extension/.output/chrome-mv3` (Developer mode → Load unpacked).
 
-| Command          | Does                                                        |
-| ---------------- | ----------------------------------------------------------- |
-| `make lint`      | ESLint + ruff                                               |
-| `make typecheck` | tsc + mypy                                                  |
-| `make test`      | Vitest + pytest                                             |
-| `make gen`       | Regenerate the TS API client after an API change            |
-| `make storybook` | Browse the UI primitives                                    |
+| Command          | Does                                             |
+| ---------------- | ------------------------------------------------ |
+| `make lint`      | ESLint + ruff                                    |
+| `make typecheck` | tsc + mypy                                       |
+| `make test`      | Vitest + pytest                                  |
+| `make gen`       | Regenerate the TS API client after an API change |
+| `make storybook` | Browse the UI primitives                         |
 
 ## Build order
 

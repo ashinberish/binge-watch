@@ -1,0 +1,41 @@
+.nr-countdown {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--nr-countdown-size);
+  height: var(--nr-countdown-size);
+  color: var(--nr-color-ink);
+}
+
+.nr-countdown__svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.nr-countdown__track {
+  stroke: var(--nr-color-surface-overlay);
+}
+
+.nr-countdown__ring {
+  stroke: var(--nr-color-brand);
+  stroke-linecap: butt;
+  animation: nr-countdown-drain var(--nr-countdown-duration) linear forwards;
+}
+
+.nr-countdown--paused .nr-countdown__ring {
+  animation-play-state: paused;
+}
+
+.nr-countdown__center {
+  position: relative;
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes nr-countdown-drain {
+  to {
+    stroke-dashoffset: var(--nr-countdown-circumference);
+  }
+}

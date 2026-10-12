@@ -1,0 +1,43 @@
+.nr-tile-row {
+  display: grid;
+  gap: var(--nr-space-3);
+}
+
+.nr-tile-row__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nr-tile-row__title {
+  margin: 0;
+  font: var(--nr-type-title-2);
+}
+
+.nr-tile-row__controls {
+  display: flex;
+  gap: var(--nr-space-1);
+}
+
+.nr-tile-row__list {
+  display: flex;
+  gap: var(--nr-space-4);
+  margin: 0;
+  /* Room for the 1.08 hover scale and focus ring. */
+  padding: var(--nr-space-4) var(--nr-space-2) var(--nr-space-6);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.nr-tile-row__item {
+  flex: none;
+  scroll-snap-align: start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nr-tile-row__list {
+    scroll-behavior: auto;
+  }
+}

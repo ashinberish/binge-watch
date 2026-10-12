@@ -1,0 +1,34 @@
+{
+  "name": "@nightreel/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared TypeScript and ESLint presets for Nightreel workspaces",
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./tsconfig.react.json": "./tsconfig.react.json",
+    "./eslint.base.js": "./eslint.base.js",
+    "./eslint.react.js": "./eslint.react.js",
+    "./eslint.boundaries.js": "./eslint.boundaries.js"
+  },
+  "files": [
+    "tsconfig.base.json",
+    "tsconfig.react.json",
+    "eslint.base.js",
+    "eslint.react.js",
+    "eslint.boundaries.js"
+  ],
+  "dependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-boundaries": "^7.2.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "typescript-eslint": "^8.71.1"
+  },
+  "peerDependencies": {
+    "eslint": "^9.39.0",
+    "typescript": "~6.0.3"
+  }
+}

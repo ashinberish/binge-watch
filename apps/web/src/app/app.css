@@ -1,0 +1,57 @@
+/* App-level globals. Tokens and primitives come from @nightreel/ui/styles.css. */
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--nr-color-brand-text);
+}
+
+.nr-stack {
+  display: grid;
+  gap: var(--nr-space-8);
+}
+
+.nr-auth {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--nr-space-8) var(--nr-space-4);
+}
+
+.nr-auth__panel {
+  display: grid;
+  gap: var(--nr-space-6);
+  width: min(100%, 400px);
+}
+
+.nr-auth__brand {
+  justify-self: center;
+}
+
+.nr-auth__title {
+  margin: 0;
+  font: var(--nr-type-title-1);
+  text-align: center;
+}
+
+.nr-auth__switch {
+  margin: 0;
+  text-align: center;
+  font: var(--nr-type-body-sm);
+  color: var(--nr-color-ink-muted);
+}
+
+.nr-account-trigger {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--nr-radius-md);
+  background: transparent;
+  cursor: pointer;
+}
+
+.nr-account-trigger:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}

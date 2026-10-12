@@ -1,0 +1,54 @@
+.nr-tabs__list {
+  display: flex;
+  gap: var(--nr-space-6);
+  box-shadow: inset 0 -1px 0 var(--nr-color-surface-overlay);
+}
+
+.nr-tabs__trigger {
+  position: relative;
+  height: var(--nr-size-control-height);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nr-color-ink-muted);
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+  cursor: pointer;
+}
+
+.nr-tabs__trigger:hover {
+  color: var(--nr-color-ink);
+}
+
+.nr-tabs__trigger:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-tabs__trigger[data-state='active'] {
+  color: var(--nr-color-ink);
+}
+
+.nr-tabs__trigger[data-state='active']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--nr-color-brand);
+}
+
+.nr-tabs__trigger:disabled {
+  opacity: var(--nr-opacity-disabled);
+  pointer-events: none;
+}
+
+.nr-tabs__content {
+  padding-top: var(--nr-space-6);
+}
+
+.nr-tabs__content:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}

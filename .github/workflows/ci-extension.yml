@@ -2,10 +2,10 @@ name: CI · Extension
 
 on:
   pull_request:
-    paths: ["apps/extension/**", "packages/**", ".github/workflows/ci-extension.yml"]
+    paths: ['apps/extension/**', 'packages/**', '.github/workflows/ci-extension.yml']
   push:
     branches: [main]
-    paths: ["apps/extension/**"]
+    paths: ['apps/extension/**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

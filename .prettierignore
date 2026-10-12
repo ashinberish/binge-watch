@@ -6,3 +6,5 @@ storybook-static
 coverage
 apps/api
 packages/api-client/src/schema.d.ts
+**/*.gen.ts
+packages/api-client/openapi.json

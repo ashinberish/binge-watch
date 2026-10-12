@@ -1,0 +1,93 @@
+.nr-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nr-space-2);
+  height: var(--nr-size-control-height);
+  padding: 0 var(--nr-space-4);
+  border: 0;
+  border-radius: var(--nr-radius-md);
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color var(--nr-duration-fast) ease-out,
+    color var(--nr-duration-fast) ease-out;
+}
+
+.nr-button:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+}
+
+.nr-button:disabled,
+.nr-button[aria-disabled='true'] {
+  opacity: var(--nr-opacity-disabled);
+  pointer-events: none;
+}
+
+.nr-button[data-loading] {
+  opacity: 1;
+}
+
+.nr-button--sm {
+  height: var(--nr-size-control-height-sm);
+  padding: 0 var(--nr-space-3);
+  gap: var(--nr-space-1);
+}
+
+.nr-button--full {
+  width: 100%;
+}
+
+/* One red: brand is a fill only. */
+.nr-button--primary {
+  background: var(--nr-color-brand);
+  color: var(--nr-color-on-brand);
+}
+.nr-button--primary:hover {
+  background: var(--nr-color-brand-hover);
+}
+
+.nr-button--secondary {
+  background: var(--nr-color-surface-raised);
+  color: var(--nr-color-ink);
+}
+.nr-button--secondary:hover {
+  background: var(--nr-color-surface-overlay);
+}
+
+.nr-button--ghost {
+  background: transparent;
+  color: var(--nr-color-ink);
+}
+.nr-button--ghost:hover {
+  background: var(--nr-color-surface-overlay);
+}
+
+.nr-button--danger {
+  background: transparent;
+  color: var(--nr-color-danger);
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.nr-button--danger:hover {
+  background: var(--nr-color-surface-overlay);
+}
+
+.nr-button__spinner {
+  animation: nr-spin 800ms linear infinite;
+}
+
+@keyframes nr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nr-button__spinner {
+    animation-duration: 2400ms;
+  }
+}

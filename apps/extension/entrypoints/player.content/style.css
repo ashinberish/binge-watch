@@ -15,12 +15,16 @@
 
 .nr-next-card__title {
   margin: 0;
-  font: 600 18px/24px 'Archivo', sans-serif;
+  font:
+    600 18px/24px 'Archivo',
+    sans-serif;
 }
 
 .nr-next-card__meta {
   margin: 0;
-  font: 400 14px/20px 'Archivo', sans-serif;
+  font:
+    400 14px/20px 'Archivo',
+    sans-serif;
   color: var(--nr-ink-muted, #a9a9b2);
 }
 

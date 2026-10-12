@@ -1,0 +1,53 @@
+{
+  "name": "@nightreel/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsr generate && vite build",
+    "preview": "vite preview",
+    "routes": "tsr generate",
+    "lint": "eslint .",
+    "typecheck": "tsr generate && tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
+    "@nightreel/api-client": "workspace:*",
+    "@nightreel/shared": "workspace:*",
+    "@nightreel/ui": "workspace:*",
+    "@tanstack/react-query": "^5.104.2",
+    "@tanstack/react-router": "^1.170.42",
+    "lucide-react": "^1.55.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-hook-form": "^7.90.0",
+    "zod": "^4.6.6",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@nightreel/config": "workspace:*",
+    "@playwright/test": "^1.64.0",
+    "@tanstack/router-cli": "^1.167.41",
+    "@tanstack/router-plugin": "^1.168.43",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "axe-core": "^4.14.0",
+    "eslint": "^9.39.5",
+    "jest-axe": "^11.0.0",
+    "jsdom": "^27.4.0",
+    "msw": "^2.15.0",
+    "typescript": "~6.0.3",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.11"
+  }
+}

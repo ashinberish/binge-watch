@@ -1,0 +1,33 @@
+.nr-skeleton {
+  display: block;
+  background: var(--nr-color-surface-raised);
+  border-radius: var(--nr-radius-md);
+  animation: nr-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.nr-skeleton--text {
+  height: 1em;
+  border-radius: var(--nr-radius-sm);
+}
+
+.nr-skeleton--circle {
+  border-radius: 50%;
+  aspect-ratio: 1;
+}
+
+.nr-skeleton--tile {
+  width: var(--nr-size-tile-width);
+  aspect-ratio: 16 / 9;
+}
+
+@keyframes nr-skeleton-pulse {
+  50% {
+    background: var(--nr-color-surface-overlay);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nr-skeleton {
+    animation: none;
+  }
+}

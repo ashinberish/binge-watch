@@ -1,0 +1,114 @@
+.nr-profile-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--nr-space-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nr-profile-card {
+  display: grid;
+  justify-items: center;
+  gap: var(--nr-space-3);
+  padding: var(--nr-space-3);
+  border: 0;
+  border-radius: var(--nr-radius-lg);
+  background: transparent;
+  color: var(--nr-color-ink-muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--nr-duration-fast) ease-out;
+}
+
+.nr-profile-card:hover {
+  background: var(--nr-color-surface-overlay);
+  color: var(--nr-color-ink);
+}
+
+.nr-profile-card:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+  color: var(--nr-color-ink);
+}
+
+.nr-profile-card__name {
+  font: var(--nr-type-title-2);
+}
+
+.nr-profile-card__add-icon {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  border-radius: var(--nr-radius-md);
+  background: var(--nr-color-surface-raised);
+}
+
+.nr-profile-grid__note {
+  margin: var(--nr-space-6) 0 0;
+  text-align: center;
+  font: var(--nr-type-body-sm);
+  color: var(--nr-color-ink-muted);
+}
+
+.nr-profile-form {
+  display: grid;
+  gap: var(--nr-space-4);
+}
+
+.nr-profile-form__preview {
+  display: flex;
+  justify-content: center;
+}
+
+.nr-profile-form__error {
+  margin: 0;
+  color: var(--nr-color-danger);
+  font: var(--nr-type-body-sm);
+}
+
+.nr-profile-form__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nr-space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nr-profile-form__legend {
+  width: 100%;
+  margin-bottom: var(--nr-space-2);
+  font: var(--nr-type-label);
+  letter-spacing: var(--nr-tracking-label);
+}
+
+.nr-swatch {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--nr-radius-md);
+  background: var(--nr-swatch);
+  cursor: pointer;
+}
+
+.nr-swatch__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.nr-swatch:has(.nr-swatch__input:checked) {
+  box-shadow:
+    0 0 0 2px var(--nr-color-surface-raised),
+    0 0 0 4px var(--nr-color-ink);
+}
+
+.nr-swatch:has(.nr-swatch__input:focus-visible) {
+  outline: var(--nr-focus-ring);
+  outline-offset: 6px;
+}

@@ -1,0 +1,113 @@
+.nr-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nr-space-2);
+  width: var(--nr-size-tile-width);
+  padding: 0 0 var(--nr-space-2);
+  border: 0;
+  border-radius: var(--nr-radius-md);
+  background: transparent;
+  color: var(--nr-color-ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transform-origin: center;
+  transition:
+    transform var(--nr-duration-base) ease-out,
+    background-color var(--nr-duration-base) ease-out,
+    box-shadow var(--nr-duration-base) ease-out;
+}
+
+.nr-tile:hover {
+  position: relative;
+  z-index: 1;
+  transform: scale(1.08);
+  background: var(--nr-color-surface-raised);
+  box-shadow: var(--nr-shadow-lift);
+  transition-delay: var(--nr-delay-tile-hover);
+}
+
+.nr-tile:focus-visible {
+  outline: var(--nr-focus-ring);
+  outline-offset: var(--nr-focus-offset);
+  background: var(--nr-color-surface-raised);
+}
+
+.nr-tile:disabled {
+  opacity: var(--nr-opacity-disabled);
+  pointer-events: none;
+}
+
+.nr-tile__frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--nr-radius-md);
+  background: var(--nr-color-surface-raised);
+}
+
+.nr-tile__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nr-tile__fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: var(--nr-space-3);
+  font: var(--nr-type-tile-title);
+  color: var(--nr-color-ink);
+  background: linear-gradient(
+    160deg,
+    var(--nr-color-surface-overlay),
+    var(--nr-color-surface-raised)
+  );
+  overflow-wrap: anywhere;
+}
+
+.nr-tile__badge {
+  position: absolute;
+  top: var(--nr-space-2);
+  left: var(--nr-space-2);
+}
+
+.nr-tile__progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--nr-size-progress-height);
+  background: var(--nr-color-scrim);
+}
+
+.nr-tile__progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--nr-color-brand);
+  transform-origin: left center;
+}
+
+.nr-tile__body {
+  display: grid;
+  gap: var(--nr-space-1);
+  padding: 0 var(--nr-space-2);
+}
+
+.nr-tile__meta {
+  font: var(--nr-type-body-sm);
+  color: var(--nr-color-ink-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nr-tile,
+  .nr-tile:hover {
+    transform: none;
+    transition-property: background-color, box-shadow;
+  }
+}

@@ -1,0 +1,18 @@
+.nr-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nr-space-3);
+  margin-top: var(--nr-space-2);
+}
+
+.nr-form-actions--start {
+  justify-content: flex-start;
+}
+
+.nr-form-actions--end {
+  justify-content: flex-end;
+}
+
+.nr-form-actions--stretch > * {
+  flex: 1;
+}

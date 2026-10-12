@@ -1,0 +1,26 @@
+.nr-progress {
+  position: relative;
+  width: 100%;
+  height: var(--nr-size-progress-height);
+  overflow: hidden;
+  border-radius: var(--nr-radius-sm);
+  background: var(--nr-color-surface-overlay);
+}
+
+.nr-progress--sm {
+  height: 2px;
+}
+
+.nr-progress__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--nr-color-brand);
+  transform-origin: left center;
+  transition: transform var(--nr-duration-base) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nr-progress__fill {
+    transition: none;
+  }
+}
