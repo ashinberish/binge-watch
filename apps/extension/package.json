@@ -16,15 +16,15 @@
     "@nightreel/api-client": "workspace:*",
     "@nightreel/shared": "workspace:*",
     "@nightreel/ui": "workspace:*",
-    "lucide-react": "^1.55.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.7",
-    "@types/chrome": "^0.1.12",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/chrome": "^0.3.6",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@wxt-dev/module-react": "^1.1.3",
@@ -33,6 +33,6 @@
     "typescript": "^5.9.2",
     "vite": "~7.3.7",
     "vitest": "^3.2.4",
-    "wxt": "^0.20.11"
+    "wxt": "^0.21.4"
   }
 }
